@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
-import { SearchMedsService } from "../services/search_meds.js";
+import { RetrievalService } from "../services/retrievalService.js";
 
 const SearchMedsParamsSchema = z.object({
 	name: z
@@ -21,25 +20,52 @@ export const SearchMedsTool = {
 		"Search for medicines based on symptoms or conditions.",
 	parameters: SearchMedsParamsSchema,
 	execute: async (args: z.infer<typeof SearchMedsParamsSchema>) => {
-		// const apiKey = env.API_KEY;
-		// if (!apiKey) {
-		// 	throw new Error(
-		// 		"API_KEY is not set. Please set it in your environment variables.",
-		// 	);
-		// }
 		console.log(`[SEARCH_MEDS] Called with: ${JSON.stringify(args)}`);
-		const searchMedsService = new SearchMedsService();
+		const retrievalService = new RetrievalService();
 
 		try {
-			const medsList = await searchMedsService.addLog({
-				name: args.name,
-                id: args.id,
-                // apiKey: apiKey,
-			});
-			return `
-            ✅ Successfully searched medicines with name ${args.name}.
-			Log Meds: ${medsList}
-			`;
+			// Initialize the retrieval service
+			await retrievalService.initialize();
+
+			let result;
+			
+			// If ID is provided, fetch specific medicine
+			if (args.id) {
+				result = await retrievalService.getMedicineById(args.id);
+				if (!result) {
+					return `❌ Medicine with ID ${args.id} not found.`;
+				}
+				return `
+					✅ Found medicine:
+					Name: ${result.product_name}
+					Barcode: ${result.barcode}
+					Price: $${result.price}
+					Quantity: ${result.quantity}
+					Category: ${result.category_name}
+					Match Score: ${(result.score * 100).toFixed(1)}%
+				`.trim();
+			}
+
+			// Otherwise, search by name
+			const searchResult = await retrievalService.searchMedicines(args.name, 5);
+			
+			if (searchResult.medicines.length === 0) {
+				return `⚠️  No medicines found for "${args.name}".`;
+			}
+
+			// Format results
+			let response = `✅ Found ${searchResult.medicines.length} medicine(s) for "${args.name}":\n\n`;
+			searchResult.medicines.forEach((med, index) => {
+				response += `${index + 1}. ${med.product_name}
+					Barcode: ${med.barcode}
+					Price: $${med.price}
+					Available: ${med.quantity} units
+					Category: ${med.category_name}
+					Match Score: ${(med.score * 100).toFixed(1)}%\n`;
+				});
+
+			response += `\nSearch completed in ${searchResult.executionTime}ms`;
+			return response;
 		} catch (error: unknown) {
 			const message =
 				error instanceof Error
