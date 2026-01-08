@@ -38,7 +38,6 @@ export const SearchMedsTool = {
 				return `
 					✅ Found medicine:
 					Name: ${result.product_name}
-					Barcode: ${result.barcode}
 					Price: $${result.price}
 					Quantity: ${result.quantity}
 					Category: ${result.category_name}
@@ -57,7 +56,6 @@ export const SearchMedsTool = {
 			let response = `✅ Found ${searchResult.medicines.length} medicine(s) for "${args.name}":\n\n`;
 			searchResult.medicines.forEach((med, index) => {
 				response += `${index + 1}. ${med.product_name}
-					Barcode: ${med.barcode}
 					Price: $${med.price}
 					Available: ${med.quantity} units
 					Category: ${med.category_name}

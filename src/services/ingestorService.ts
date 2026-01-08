@@ -5,8 +5,15 @@ import { QdrantService } from '../storage/qdrantService.js';
 export interface IngestResult {
   id: string;
   productName: string;
-  barcode: string;
   success: boolean;
+  message: string;
+}
+
+export interface BatchIngestResult {
+  totalProducts: number;
+  successful: number;
+  failed: number;
+  results: IngestResult[];
   message: string;
 }
 
@@ -37,56 +44,109 @@ export class IngestorService {
   }
 
   /**
-   * Ingest a product by barcode: fetch data, generate embedding, store in Qdrant
-   * @param barcode The barcode of the product to ingest
-   * @returns Result of the ingestion process
+   * Ingest all products from the API: fetch data with pagination, generate embeddings, store in Qdrant
+   * @param maxProducts Maximum number of products to ingest (default: 20 for testing)
+   * @returns Result of the batch ingestion process
    */
-  async ingestProductByBarcode(barcode: string): Promise<IngestResult> {
+  async ingestAllProducts(maxProducts: number = 5): Promise<BatchIngestResult> {
     try {
-      console.log(`📥 Starting ingestion for barcode: ${barcode}`);
+      console.log(`📥 Starting batch ingestion for all products from API (max: ${maxProducts})`);
 
-      // Step 1: Fetch product data from Unified Products API
-      const product = await this.productsService.getProductByBarcode(barcode);
-      console.log(`✅ Product fetched: ${product.product_name}`);
+      // Step 1: Fetch all products from the API with pagination
+      const allProducts = await this.productsService.getAllProducts(maxProducts);
+      console.log(`✅ Fetched ${allProducts.length} products from API`);
 
-      // Step 2: Format product data and generate embedding
-      const productText = this.productsService.formatProductForEmbedding(product);
-      const embedding = await this.embeddingService.generateEmbedding(productText);
-      console.log(`✅ Embedding generated for ${product.product_name}`);
+      if (allProducts.length === 0) {
+        return {
+          totalProducts: 0,
+          successful: 0,
+          failed: 0,
+          results: [],
+          message: 'No products found in the API',
+        };
+      }
 
-      // Step 3: Store in Qdrant
-      const id = `${product.barcode}_${Date.now()}`;
-      const payload = {
-        product_name: product.product_name,
-        barcode: product.barcode,
-        price: product.price,
-        quantity: product.quantity,
-        category_name: product.category_name,
-        category_slug: product.category_slug,
-        category_id: product.category_id,
-        price_updated_at: product.price_updated_at,
-        ingested_at: new Date().toISOString(),
-      };
+      const results: IngestResult[] = [];
+      let successCount = 0;
+      let failureCount = 0;
 
-      await this.qdrantService.addChunk(id, embedding, payload);
-      console.log(`✅ Product stored in Qdrant: ${id}`);
+      // Step 2: Ingest each product
+      for (let i = 0; i < allProducts.length; i++) {
+        const product = allProducts[i];
+        try {
+          console.log(`⏳ Ingesting product ${i + 1}/${allProducts.length}: ${product.product_name}`);
+
+          // Format product data and generate embedding
+          const productText = this.productsService.formatProductForEmbedding(product);
+          const embedding = await this.embeddingService.generateEmbedding(productText);
+
+          // Store in Qdrant
+          const timestampId = Date.now() + i;
+          const price = typeof product.price === 'string' ? parseFloat(product.price) : (product.price || 0);
+          const quantity = typeof product.quantity === 'string' ? parseInt(product.quantity, 10) : (product.quantity || 0);
+          
+          const payload = {
+            product_name: String(product.product_name || ''),
+            price: isNaN(price) ? 0 : price,
+            quantity: isNaN(quantity) ? 0 : quantity,
+            category_name: String(product.category_name || ''),
+            category_slug: String(product.category_slug || ''),
+            category_id: parseInt(String(product.category_id), 10) || 0,
+            price_updated_at: product.price_updated_at || new Date().toISOString(),
+            ingested_at: new Date().toISOString(),
+          };
+
+          console.log(`  Payload for ${product.product_name}: price=${payload.price}, qty=${payload.quantity}`);
+
+          await this.qdrantService.addChunk(String(timestampId), embedding, payload);
+          console.log(`✅ Product ${i + 1}/${allProducts.length} stored in Qdrant: ${product.product_name}`);
+
+          results.push({
+            id: String(timestampId),
+            productName: product.product_name,
+            success: true,
+            message: `Successfully ingested: ${product.product_name}`,
+          });
+
+          successCount++;
+
+          // Add delay to avoid overwhelming the embedding service
+          if (i < allProducts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`❌ Error ingesting ${product.product_name}: ${message}`);
+
+          results.push({
+            id: `unknown_${Date.now()}`,
+            productName: product.product_name,
+            success: false,
+            message: `Failed to ingest: ${message}`,
+          });
+
+          failureCount++;
+        }
+      }
+
+      console.log(`\n📊 Batch ingestion completed: ${successCount}/${allProducts.length} successful`);
 
       return {
-        id,
-        productName: product.product_name,
-        barcode: product.barcode,
-        success: true,
-        message: `Successfully ingested product: ${product.product_name}`,
+        totalProducts: allProducts.length,
+        successful: successCount,
+        failed: failureCount,
+        results,
+        message: `Ingestion complete: ${successCount} successful, ${failureCount} failed`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Error ingesting product by barcode: ${message}`);
+      console.error(`❌ Error in batch ingestion: ${message}`);
       return {
-        id: `${barcode}_error`,
-        productName: 'Unknown',
-        barcode,
-        success: false,
-        message: `Failed to ingest product: ${message}`,
+        totalProducts: 0,
+        successful: 0,
+        failed: 0,
+        results: [],
+        message: `Batch ingestion failed: ${message}`,
       };
     }
   }
@@ -110,16 +170,15 @@ export class IngestorService {
       console.log(`✅ Embedding generated for ${product.product_name}`);
 
       // Step 3: Store in Qdrant
-      const id = `${product.barcode}_${Date.now()}`;
+      const id = `${product.product_name}_${Date.now()}`;
       const payload = {
         product_name: product.product_name,
-        barcode: product.barcode,
         price: product.price,
         quantity: product.quantity,
         category_name: product.category_name,
         category_slug: product.category_slug,
         category_id: product.category_id,
-        price_updated_at: product.price_updated_at,
+        price_updated_at: product.price_updated_at || new Date().toISOString(),
         ingested_at: new Date().toISOString(),
       };
 
@@ -129,7 +188,6 @@ export class IngestorService {
       return {
         id,
         productName: product.product_name,
-        barcode: product.barcode,
         success: true,
         message: `Successfully ingested product: ${product.product_name}`,
       };
@@ -137,35 +195,11 @@ export class IngestorService {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`❌ Error ingesting product by query: ${message}`);
       return {
-        id: `${query}_error`,
+        id: `unknown_${Date.now()}`,
         productName: 'Unknown',
-        barcode: 'Unknown',
         success: false,
         message: `Failed to ingest product: ${message}`,
       };
     }
-  }
-
-  /**
-   * Ingest multiple products by barcodes
-   * @param barcodes Array of barcodes to ingest
-   * @returns Array of ingestion results
-   */
-  async ingestMultipleProducts(barcodes: string[]): Promise<IngestResult[]> {
-    console.log(`📥 Starting batch ingestion for ${barcodes.length} products`);
-    
-    const results: IngestResult[] = [];
-    for (const barcode of barcodes) {
-      const result = await this.ingestProductByBarcode(barcode);
-      results.push(result);
-      
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    const successCount = results.filter(r => r.success).length;
-    console.log(`✅ Batch ingestion complete: ${successCount}/${barcodes.length} succeeded`);
-    
-    return results;
   }
 }

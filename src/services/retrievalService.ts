@@ -4,7 +4,6 @@ import { QdrantService } from '../storage/qdrantService.js';
 export interface RetrievedMedicine {
   id: string;
   product_name: string;
-  barcode: string;
   price: number;
   quantity: number;
   category_name: string;
@@ -69,7 +68,6 @@ export class RetrievalService {
       const medicines: RetrievedMedicine[] = searchResults.map((result: any) => ({
         id: String(result.id),
         product_name: result.payload?.product_name || 'Unknown',
-        barcode: result.payload?.barcode || 'Unknown',
         price: result.payload?.price || 0,
         quantity: result.payload?.quantity || 0,
         category_name: result.payload?.category_name || 'Unknown',
@@ -154,7 +152,6 @@ export class RetrievalService {
       return {
         id: String(medicine.id),
         product_name: medicine.payload?.product_name || 'Unknown',
-        barcode: medicine.payload?.barcode || 'Unknown',
         price: medicine.payload?.price || 0,
         quantity: medicine.payload?.quantity || 0,
         category_name: medicine.payload?.category_name || 'Unknown',

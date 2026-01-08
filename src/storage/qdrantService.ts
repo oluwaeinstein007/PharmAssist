@@ -36,7 +36,7 @@ export class QdrantService {
     });
 
     // Default collection name and vector size
-    this.collectionName = 'stock_market'; // Default collection name
+    this.collectionName = 'pharm_cluster'; // Default collection name
     // Allow embedding dimension to be configured via env, otherwise default to 1536
     const envVec = process.env.EMBEDDING_VECTOR_SIZE || '1536';
     this.vectorSize = envVec ? parseInt(envVec, 10) : 1536;
@@ -132,11 +132,16 @@ export class QdrantService {
   // Method to add a document chunk with its embedding to Qdrant
   async addChunk(id: string, embedding: number[], payload: any): Promise<void> {
     try {
+      const numericId = parseInt(id, 10);
+      if (isNaN(numericId)) {
+        throw new Error(`Invalid numeric ID: ${id}`);
+      }
+      
       await this.client.upsert(this.collectionName, {
         wait: true,
         points: [
           {
-            id: id,
+            id: numericId,
             vector: embedding,
             payload: payload,
           },
