@@ -147,11 +147,11 @@ async function runMockTests() {
     console.log('📍 Step 3: Testing Search Functionality...\n');
     
     try {
-      console.log('⏳ Searching for pain relief medicines...');
-      const result = await retrievalService.searchMedicines('pain relief', 5);
+      console.log('⏳ Searching for pregnant care medicines...');
+      const result = await retrievalService.searchMedicines('pregnant care', 5);
       
       if (result.totalResults > 0) {
-        console.log(`✅ Found ${result.totalResults} pain relief medicines`);
+        console.log(`✅ Found ${result.totalResults} pregnant care medicines`);
         result.medicines.forEach((med, index) => {
           console.log(`  ${index + 1}. ${med.product_name} - ₦${med.price}`);
         });

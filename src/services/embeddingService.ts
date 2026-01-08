@@ -26,7 +26,7 @@ export class EmbeddingService {
       } else {
         this.googleClient = new GoogleGenerativeAI(apiKey);
       }
-      this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'embedding-001';
+      this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'text-embedding-004';
     }
 
     console.log(`Embedding service initialized with provider: ${this.provider}`);
@@ -81,7 +81,7 @@ export class EmbeddingService {
     }
 
     try {
-      const model = this.googleClient.getGenerativeModel({ model: 'embedding-001' });
+      const model = this.googleClient.getGenerativeModel({ model: 'text-embedding-004' });
       
       const result = await model.embedContent(text);
       const embedding = result.embedding.values;
