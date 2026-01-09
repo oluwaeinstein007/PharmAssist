@@ -60,9 +60,16 @@ PharmAssist/
 
 3. Set up environment variables:
    Create a `.env` file in the root directory and add your API keys:
+
    ```env
    ANTHROPIC_API_KEY=your_anthropic_key
    GEMINI_API_KEY=your_gemini_key
+   ```
+
+   If you want the chat REPL to automatically load variables from this file, install the `dotenv` package:
+
+   ```bash
+   pnpm add dotenv
    ```
 
 ### Running the MCP Server
@@ -74,6 +81,29 @@ pnpm tsx src/index.ts
 ```
 
 The server will start over `stdio`, allowing it to be connected to MCP-compatible clients.
+
+---
+
+### Chat REPL (use MCP tools)
+
+A simple CLI chat interface is provided so you can interact with the MCP tools directly from your terminal. It uses Google Generative AI under the hood and supports calling core tools like `SEARCH_MEDICINES` and `GET_MEDICINE_BY_ID`.
+
+- Run the chat client:
+
+```bash
+pnpm chat
+```
+
+- Environment variables required:
+
+  - `GOOGLE_API_KEY` or `GEMINI_API_KEY` — your Google Generative AI API key
+
+- How it works:
+  - Ask a question (e.g., "Find medicine for headache").
+  - If the assistant needs to call a tool, it will emit a small JSON instruction like `{ "tool": "SEARCH_MEDICINES", "input": "headache" }`.
+  - The CLI will execute the tool, return its result to the assistant, and the assistant will continue the conversation using the tool output.
+
+This provides an easy way to experiment with the MCP tools in a conversational manner.
 
 ## 🤖 AI Integrations
 

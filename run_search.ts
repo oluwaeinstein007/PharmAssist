@@ -47,7 +47,11 @@ async function main() {
     'cough syrup',
     'blood pressure medication',
     'diabetes care',
-    'pregnant care'
+    'pregnant care',
+    'malaria treatment',
+    'pain relief',
+    'vitamins and supplements',
+    'allergy medicine'
   ];
   
   try {
