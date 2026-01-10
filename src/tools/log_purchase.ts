@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
-import { LogPurchaseService } from "../services/log_purchase.js";
+import { LogPurchaseService } from "../services/logPurchaseService.js";
 
 const LogPurchaseParamsSchema = z.object({
     medicine_name: z
