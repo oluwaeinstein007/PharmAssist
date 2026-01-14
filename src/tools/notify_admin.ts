@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
+import { NotifyAdminService } from "../services/notifyAdminService.js";
 
 const NotifyAdminParamsSchema = z.object({
     medicine_name: z

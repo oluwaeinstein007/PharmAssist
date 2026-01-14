@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
-import { FindAlternativesService } from "../services/log_purchase.js";
+import { FindAlternativesService } from "../services/logPurchaseService.js";
 
 const FindAlternativesParamsSchema = z.object({
     medicine_name: z

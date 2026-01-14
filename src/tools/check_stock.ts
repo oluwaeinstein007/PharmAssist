@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
+import { CheckStockService } from "../services/checkStockService.js";
 
 const checkStockParamsSchema = z.object({
 	medicine_id: z
