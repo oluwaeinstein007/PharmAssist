@@ -11,14 +11,16 @@ services:
       - PORT=4000
       - NODE_ENV=production
       # Add your environment variables here from .env
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - LLM_API_KEY=${LLM_API_KEY}
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
-      - GEMINI_EMBEDDING_MODEL=${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
       - EMBEDDING_VECTOR_SIZE=${EMBEDDING_VECTOR_SIZE:-768}
       - QDRANT_HOST=${QDRANT_HOST}
       - QDRANT_KEY=${QDRANT_KEY}
       - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - BEARER_TOKEN=${BEARER_TOKEN}
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -44,9 +46,12 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://localhost:4000
       # Frontend environment variables
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - LLM_API_KEY=${LLM_API_KEY}
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://localhost:4000/mcp}
+      - MCP_URL=${MCP_URL:-http://localhost:4000/mcp}
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
     depends_on:
       mcp-backend:
         condition: service_healthy

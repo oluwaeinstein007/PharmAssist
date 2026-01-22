@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { 
+  GoogleGenerativeAI, 
+  SchemaType, 
+  FunctionDeclaration, 
+  Schema
+} from '@google/generative-ai';
 
 const MCP_URL = process.env.MCP_URL || 'http://localhost:4000/mcp';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -106,7 +111,7 @@ class MCPClient {
 }
 
 // Define tools for Gemini function calling
-const pharmacyTools = [
+const pharmacyTools: FunctionDeclaration[] = [
   {
     name: 'search_medicines',
     description: 'Search for medicines by name, symptom, or condition. Use this to find medicines for treating symptoms like fever, headache, malaria, cough, cold, pain, etc.',
@@ -116,11 +121,11 @@ const pharmacyTools = [
         query: {
           type: SchemaType.STRING,
           description: 'The medicine name, symptom, or condition to search for (e.g., "paracetamol", "fever", "malaria")'
-        }
+        } as Schema
       },
       required: ['query']
-    }
-  },
+    } as Schema
+  } as FunctionDeclaration,
   {
     name: 'check_stock',
     description: 'Check the stock availability of a specific medicine by its ID. Use this after searching for medicines to verify availability.',
@@ -130,11 +135,11 @@ const pharmacyTools = [
         medicine_id: {
           type: SchemaType.STRING,
           description: 'The ID of the medicine to check stock for'
-        }
+        } as Schema
       },
       required: ['medicine_id']
-    }
-  },
+    } as Schema
+  } as FunctionDeclaration,
   {
     name: 'find_alternatives',
     description: 'Find alternative medicines for a specific medicine by its ID. Use this when a medicine is out of stock or user wants options.',
@@ -144,11 +149,11 @@ const pharmacyTools = [
         medicine_id: {
           type: SchemaType.STRING,
           description: 'The ID of the medicine to find alternatives for'
-        }
+        } as Schema
       },
       required: ['medicine_id']
-    }
-  },
+    } as Schema
+  } as FunctionDeclaration,
   {
     name: 'get_medicine_details',
     description: 'Get detailed information about a specific medicine including dosage, side effects, and usage instructions.',
@@ -158,11 +163,11 @@ const pharmacyTools = [
         medicine_id: {
           type: SchemaType.STRING,
           description: 'The ID of the medicine to get details for'
-        }
+        } as Schema
       },
       required: ['medicine_id']
-    }
-  }
+    } as Schema
+  } as FunctionDeclaration
 ];
 
 // Map Gemini function names to MCP tool names
