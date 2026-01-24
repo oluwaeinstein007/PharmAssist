@@ -28,7 +28,7 @@ services:
     networks:
       - pharmassist-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health"]
+      test: ["CMD", "curl", "-sL", "http://localhost:4000/mcp"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,13 +44,13 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:4000
+      - NEXT_PUBLIC_API_URL=http://mcp-backend:4000
       # Frontend environment variables
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
       - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
-      - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://localhost:4000/mcp}
-      - MCP_URL=${MCP_URL:-http://localhost:4000/mcp}
+      - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://mcp-backend:4000/mcp}
+      - MCP_URL=${MCP_URL:-http://mcp-backend:4000/mcp}
       - GEMINI_API_KEY=${GOOGLE_API_KEY}
     depends_on:
       mcp-backend:

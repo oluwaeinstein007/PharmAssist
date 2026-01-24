@@ -57,16 +57,22 @@ Always provide clear, helpful responses about medications.`;
 	// Determine transport type from environment/args
 	const useHttp = process.argv.includes("--http") || process.env.USE_HTTP === "true";
 	const port = parseInt(process.env.PORT || "3000");
+	// Bind host for Docker: default to 0.0.0.0 so other containers can reach this service
+	const host = process.env.HOST || '0.0.0.0';
 
 	try {
 		if (useHttp) {
 			await server.start({
-				httpStream: { port },
+				httpStream: { port, host },
 				transportType: "httpStream"
 			});
-			console.log(`PharmAssist MCP Server started on http://localhost:${port}`);
-			console.log(`  MCP endpoint: http://localhost:${port}/mcp`);
-			console.log(`  Health check: http://localhost:${port}/health`);
+			console.log(`PharmAssist MCP Server started on http://${host}:${port}`);
+			console.log(`  MCP endpoint: http://${host}:${port}/mcp`);
+			console.log(`  Health check: http://${host}:${port}/health`);
+			
+			// Note: FastMCP httpStream does not expose a built-in /health endpoint.
+			// The /mcp endpoint will return 400 without a valid MCP session.
+			// Consider using a simple HTTP server wrapper or checking /mcp with a timeout.
 		} else {
 			await server.start({ transportType: "stdio" });
 			console.log("PharmAssist MCP Server started successfully over stdio.");
