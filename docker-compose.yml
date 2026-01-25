@@ -1,0 +1,64 @@
+services:
+  # MCP Backend Server
+  mcp-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pharmassist-mcp
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      # Add your environment variables here from .env
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - EMBEDDING_VECTOR_SIZE=${EMBEDDING_VECTOR_SIZE:-768}
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_KEY=${QDRANT_KEY}
+      - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - BEARER_TOKEN=${BEARER_TOKEN}
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - pharmassist-network
+    healthcheck:
+      test: ["CMD", "curl", "-sL", "http://localhost:4000/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pharmassist-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://mcp-backend:4000
+      # Frontend environment variables
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://mcp-backend:4000/mcp}
+      - MCP_URL=${MCP_URL:-http://mcp-backend:4000/mcp}
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      mcp-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pharmassist-network
+
+networks:
+  pharmassist-network:
+    driver: bridge

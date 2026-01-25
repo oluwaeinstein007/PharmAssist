@@ -51,7 +51,8 @@ async function main() {
     'malaria treatment',
     'pain relief',
     'vitamins and supplements',
-    'allergy medicine'
+    'allergy medicine',
+    'syphilis treatment',
   ];
   
   try {
