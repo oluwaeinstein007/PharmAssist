@@ -7,6 +7,7 @@ import { LogPurchaseTool } from "./tools/log_purchase.js";
 import { NotifyAdminTool } from "./tools/notify_admin.js";
 import { FindAlternativesTool } from "./tools/find_alternatives.js";
 import { GetMedicineDetailsTool } from "./tools/medicine_details.js";
+import { CreateCartTool } from "./tools/create_cart.js";
 
 async function main() {
 	console.log("Initializing PharmAssist MCP Server...");
@@ -21,6 +22,7 @@ async function main() {
 - Log purchases using LOG_PURCHASE
 - Notify admins when needed using NOTIFY_ADMIN
 - Get detailed medicine information using GET_MEDICINE_DETAILS
+- Create shopping carts using CREATE_CART
 
 Always provide clear, helpful responses about medications and pharmacy-related queries.`
 	});
@@ -32,6 +34,7 @@ Always provide clear, helpful responses about medications and pharmacy-related q
 	server.addTool(NotifyAdminTool);
 	server.addTool(FindAlternativesTool);
 	server.addTool(GetMedicineDetailsTool);
+	server.addTool(CreateCartTool);
 
 	// Add pharmacy assistant prompt for chat integration
 	server.addPrompt({
@@ -56,7 +59,7 @@ Always provide clear, helpful responses about medications.`;
 
 	// Determine transport type from environment/args
 	const useHttp = process.argv.includes("--http") || process.env.USE_HTTP === "true";
-	const port = parseInt(process.env.PORT || "3000");
+	const port = parseInt(process.env.PORT || "3000", 10);
 	// Bind host for Docker: default to 0.0.0.0 so other containers can reach this service
 	const host = process.env.HOST || '0.0.0.0';
 

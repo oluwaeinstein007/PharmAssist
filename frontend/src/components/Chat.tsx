@@ -41,7 +41,8 @@ export default function Chat() {
         if (response.ok) {
           setIsConnected(true);
         }
-      } catch {
+      } catch (error) {
+        console.error('API connection check failed:', error);
         setIsConnected(false);
       }
     };
@@ -169,7 +170,7 @@ export default function Chat() {
                 key={idx}
                 onClick={() => sendMessage(action.query)}
                 disabled={isLoading}
-                className="flex-shrink-0 px-3 py-1.5 bg-gray-100 hover:bg-blue-100 hover:text-blue-700 rounded-full text-sm transition-all disabled:opacity-50"
+                className="flex-shrink-0 px-3 py-1.5 bg-gray-100 hover:bg-blue-100 hover:text-blue-700 rounded-full text-sm text-black transition-all disabled:opacity-50"
               >
                 {action.label}
               </button>

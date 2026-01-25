@@ -32,7 +32,7 @@ async function parseSSEResponse(response: Response): Promise<MCPResponse> {
     }
   }
   
-  throw new Error('No valid JSON found in SSE response');
+  throw new Error(`No valid JSON found in SSE response: ${text}`);
 }
 
 export class MCPClient {

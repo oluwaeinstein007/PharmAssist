@@ -60,7 +60,8 @@ class MCPClient {
     });
 
     if (!response.ok) {
-      throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new Error(`MCP request failed: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 200)}`);
     }
 
     const sessionHeader = response.headers.get('mcp-session-id');
@@ -167,6 +168,33 @@ const pharmacyTools: FunctionDeclaration[] = [
       },
       required: ['medicine_id']
     } as Schema
+  } as FunctionDeclaration,
+  {
+    name: 'create_cart',
+    description: 'Create a shopping cart with medicine items. Each item requires a barcode and quantity.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        items: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              barcode: {
+                type: SchemaType.STRING,
+                description: 'The barcode of the medicine'
+              } as Schema,
+              qty: {
+                type: SchemaType.STRING,
+                description: 'The quantity of the medicine'
+              } as Schema
+            },
+            required: ['barcode', 'qty']
+          } as Schema
+        } as Schema
+      },
+      required: ['items']
+    } as Schema
   } as FunctionDeclaration
 ];
 
@@ -175,13 +203,16 @@ const toolMapping: Record<string, string> = {
   'search_medicines': 'SEARCH_MEDS',
   'check_stock': 'CHECK_STOCK',
   'find_alternatives': 'FIND_ALTERNATIVES',
-  'get_medicine_details': 'GET_MEDICINE_DETAILS'
+  'get_medicine_details': 'GET_MEDICINE_DETAILS',
+  'create_cart': 'CREATE_CART'
 };
 
 function mapArguments(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   switch (toolName) {
     case 'search_medicines':
       return { name: args.query };
+    case 'create_cart':
+      return { items: args.items };
     default:
       return args;
   }
@@ -203,11 +234,15 @@ async function processWithGemini(
     systemInstruction: `You are PharmAssist, a helpful AI pharmacy assistant. Your role is to:
 1. Help customers find medicines for their symptoms or conditions
 2. Check stock availability of medicines
-3. Provide information about medicines (dosage, side effects, usage)
-4. Suggest alternatives when medicines are unavailable
+5. Create shopping carts when customers are ready to purchase
 
 When users describe symptoms like fever, headache, malaria, cold, or pain:
 1. First use search_medicines to find relevant medicines
+2. Then check stock availability if needed
+3. Suggest alternatives if something is out of stock
+4. Create a cart when the user wants to purchase medicines
+
+When a user wants to create a cart, ask for the barcode and quantity of each item, then use the create_cart function to proceed with the purchase.ines
 2. Then check stock availability if needed
 3. Suggest alternatives if something is out of stock
 
