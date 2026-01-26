@@ -44,7 +44,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://mcp-backend:4000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://mcp-backend:4000}
       # Frontend environment variables
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
       - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
