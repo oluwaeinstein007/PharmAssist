@@ -17,10 +17,12 @@ COPY pnpm-lock.yaml package.json ./
 
 # Copy root src and config files
 COPY tsconfig.json ./
-COPY src ./src
 
 # Install dependencies with extended timeout
 RUN pnpm install --config.fetch-timeout=120000
+
+# Copy source code after installing dependencies
+COPY src ./src
 
 # Expose port
 EXPOSE 4000
