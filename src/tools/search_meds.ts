@@ -55,11 +55,12 @@ export const SearchMedsTool = {
 			// Format results
 			let response = `✅ Found ${searchResult.medicines.length} medicine(s) for "${args.name}":\n\n`;
 			searchResult.medicines.forEach((med, index) => {
-				response += `${index + 1}. ${med.product_name}
-					Price: $${med.price}
-					Available: ${med.quantity} units
-					Category: ${med.category_name}
-					Match Score: ${(med.score * 100).toFixed(1)}%\n`;
+				response += `${index + 1}. **${med.product_name}**
+   Barcode: ${med.barcode}
+   Price: $${med.price}
+   Available: ${med.quantity} units
+   Category: ${med.category_name}
+   Match Score: ${(med.score * 100).toFixed(1)}%\n`;
 				});
 
 			response += `\nSearch completed in ${searchResult.executionTime}ms`;

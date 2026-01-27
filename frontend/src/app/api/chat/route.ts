@@ -129,16 +129,16 @@ const pharmacyTools: FunctionDeclaration[] = [
   } as FunctionDeclaration,
   {
     name: 'check_stock',
-    description: 'Check the stock availability of a specific medicine by its ID. Use this after searching for medicines to verify availability.',
+    description: 'Check the stock availability and price of a specific medicine by its barcode. Use this after selecting a medicine from search results to verify availability before ordering.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        medicine_id: {
+        medicine_barcode: {
           type: SchemaType.STRING,
-          description: 'The ID of the medicine to check stock for'
+          description: 'The barcode of the medicine to check stock for'
         } as Schema
       },
-      required: ['medicine_id']
+      required: ['medicine_barcode']
     } as Schema
   } as FunctionDeclaration,
   {
@@ -231,22 +231,45 @@ async function processWithGemini(
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
     tools: [{ functionDeclarations: pharmacyTools }],
-    systemInstruction: `You are PharmAssist, a helpful AI pharmacy assistant. Your role is to:
-1. Help customers find medicines for their symptoms or conditions
-2. Check stock availability of medicines
-5. Create shopping carts when customers are ready to purchase
+    systemInstruction: `You are PharmAssist, a simple and helpful AI pharmacy assistant. Help customers find and order medicines easily.
 
-When users describe symptoms like fever, headache, malaria, cold, or pain:
-1. First use search_medicines to find relevant medicines
-2. Then check stock availability if needed
-3. Suggest alternatives if something is out of stock
-4. Create a cart when the user wants to purchase medicines
+CORE RESPONSIBILITIES:
+1. Search for medicines when users ask (use search_medicines)
+2. Display search results with barcode, price, and availability
+3. Create carts when users want to order (use create_cart)
 
-When a user wants to create a cart, ask for the barcode and quantity of each item, then use the create_cart function to proceed with the purchase.ines
-2. Then check stock availability if needed
-3. Suggest alternatives if something is out of stock
+FRONTEND WORKFLOW - READ CAREFULLY:
+- The frontend will automatically extract barcodes from your search results
+- The frontend handles all product selection and quantity input
+- You ONLY need to: search, display results, and create carts
+- DO NOT ask users for barcodes - they're extracted automatically
+- DO NOT ask for quantity input - the frontend will ask
+- Just keep responses simple and helpful
 
-Always be helpful and provide clear, actionable responses. Use the tools to get real data from the pharmacy database.`
+EXPECTED RESPONSE FORMAT FOR SEARCH:
+When you find medicines, format them EXACTLY like this:
+1. **Medicine Name**
+   Barcode: 1234567890
+   Price: $10.99
+   Available: 50 units
+   
+2. **Another Medicine**
+   Barcode: 0987654321
+   ...
+
+USER SCENARIOS:
+1. User: "Find paracetamol"
+   → Use search_medicines, show results with barcodes
+   → Frontend shows select buttons automatically
+   
+2. User: "I want 2 paracetamol"
+   → Use search_medicines to find paracetamol
+   → Frontend auto-detects "2" and asks for confirmation
+   
+3. User sends barcode + quantity directly
+   → Use create_cart to complete the order
+
+Be friendly, clear, and let the frontend handle the UI interactions.`
   });
 
   const chat = model.startChat({});

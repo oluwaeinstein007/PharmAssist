@@ -62,8 +62,10 @@ export class UnifiedProductsService {
       while (hasNextPage && (maxProducts === 0 || allProducts.length < maxProducts)) {
         const url = `${this.apiBaseUrl}/products/unified?page=${currentPage}`;
         console.log(`🔍 Fetching page ${currentPage}: ${url}`);
+        console.log(`   Token: ${this.apiToken ? 'set (' + this.apiToken.substring(0, 20) + '...)' : 'NOT SET'}`);
 
         try {
+          console.log(`   Making axios GET request...`);
           const response = await axios.get<PaginatedResponse>(url, {
             headers: {
               'Authorization': `Bearer ${this.apiToken}`,
@@ -100,9 +102,22 @@ export class UnifiedProductsService {
               await new Promise(resolve => setTimeout(resolve, 500));
             }
           }
-        } catch (pageError) {
-          const pageMessage = pageError instanceof Error ? pageError.message : 'Unknown error';
-          console.warn(`⚠️  Error fetching page ${currentPage}: ${pageMessage}. Stopping pagination.`);
+        } catch (pageError: any) {
+          let errorMessage = 'Unknown error';
+          if (pageError instanceof Error) {
+            errorMessage = pageError.message;
+          } else if (pageError.response) {
+            errorMessage = `HTTP ${pageError.response.status}: ${pageError.response.statusText}`;
+            if (pageError.response.data) {
+              errorMessage += ` - ${JSON.stringify(pageError.response.data).substring(0, 100)}`;
+            }
+          } else if (pageError.code) {
+            errorMessage = `${pageError.code}: ${pageError.message}`;
+          } else {
+            errorMessage = JSON.stringify(pageError).substring(0, 200);
+          }
+          console.warn(`⚠️  Error fetching page ${currentPage}: ${errorMessage}. Stopping pagination.`);
+          console.warn(`   Error stack: ${pageError.stack || 'no stack'}`);
           // Stop pagination if we hit an error (e.g., API failure on later pages)
           hasNextPage = false;
         }

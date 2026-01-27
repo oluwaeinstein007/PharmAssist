@@ -87,6 +87,7 @@ export class IngestorService {
           
           const payload = {
             product_name: String(product.product_name || ''),
+            barcode: String(product.barcode || ''),
             price: isNaN(price) ? 0 : price,
             quantity: isNaN(quantity) ? 0 : quantity,
             category_name: String(product.category_name || ''),
@@ -96,7 +97,7 @@ export class IngestorService {
             ingested_at: new Date().toISOString(),
           };
 
-          console.log(`  Payload for ${product.product_name}: price=${payload.price}, qty=${payload.quantity}`);
+          console.log(`  Payload for ${product.product_name}: barcode=${payload.barcode}, price=${payload.price}, qty=${payload.quantity}`);
 
           await this.qdrantService.addChunk(String(timestampId), embedding, payload);
           console.log(`✅ Product ${i + 1}/${allProducts.length} stored in Qdrant: ${product.product_name}`);
