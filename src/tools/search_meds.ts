@@ -38,7 +38,7 @@ export const SearchMedsTool = {
 				return `
 					✅ Found medicine:
 					Name: ${result.product_name}
-					Price: $${result.price}
+					Price: ₦${result.price}
 					Quantity: ${result.quantity}
 					Category: ${result.category_name}
 					Match Score: ${(result.score * 100).toFixed(1)}%
@@ -57,7 +57,7 @@ export const SearchMedsTool = {
 			searchResult.medicines.forEach((med, index) => {
 				response += `${index + 1}. **${med.product_name}**
    Barcode: ${med.barcode}
-   Price: $${med.price}
+   Price: ₦${med.price}
    Available: ${med.quantity} units
    Category: ${med.category_name}
    Match Score: ${(med.score * 100).toFixed(1)}%\n`;

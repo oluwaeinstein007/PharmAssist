@@ -35,7 +35,7 @@ Error: ${result.error}
 
 **Product:** ${data?.product_name}
 **Category:** ${data?.category_name}
-**Price:** $${data?.price}
+**Price:** ₦${data?.price}
 **Available Quantity:** ${data?.quantity} units
 
 ${data?.quantity && data.quantity > 0 ? '✨ In stock and ready to order!' : '⚠️ Out of stock'}
