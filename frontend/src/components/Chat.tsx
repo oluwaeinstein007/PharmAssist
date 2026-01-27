@@ -53,6 +53,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
 
   // Check API connection on mount
   useEffect(() => {
@@ -112,15 +113,24 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
     const productBlocks = content.split(/\n(?=\d+\.)/);
     
     for (const block of productBlocks) {
-      const nameMatch = block.match(/\d+\.\s*\*\*([^*]+)\*\*/);
-      const barcodeMatch = block.match(/Barcode:\s*(\d+)/);
-      const priceMatch = block.match(/Price:\s*\$?([\d.]+)/);
+      // Match product name with or without bold formatting
+      let nameMatch = block.match(/\d+\.\s*\*\*([^*]+)\*\*/);
+      if (!nameMatch) {
+        // Try without bold formatting
+        nameMatch = block.match(/\d+\.\s*([^\n]+)/);
+      }
+      
+      const barcodeMatch = block.match(/Barcode:\s*([^\n]+)/);
+      const priceMatch = block.match(/Price:\s*[₦N]?([\d.]+)/);
       const quantityMatch = block.match(/Available:\s*(\d+)\s*units/);
 
       if (nameMatch && barcodeMatch) {
+        const productName = nameMatch[1].trim().replace(/\*\*/g, '');
+        const barcode = barcodeMatch[1].trim();
+        
         products.push({
-          barcode: barcodeMatch[1],
-          name: nameMatch[1].trim(),
+          barcode: barcode,
+          name: productName,
           price: parseFloat(priceMatch?.[1] || '0'),
           available: parseInt(quantityMatch?.[1] || '0'),
         });
@@ -153,12 +163,12 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       });
 
       addMessage(
-        `📦 **${product.name}** - $${product.price}\n\n✅ Ready to order ${userQuantity} unit${userQuantity > 1 ? 's' : ''}?\n\nClick "Confirm Order" below to proceed.`,
+        `✅ Selected: **${product.name}** @ ₦${product.price}\n\nReady to order ${userQuantity} unit${userQuantity > 1 ? 's' : ''}?`,
         'system'
       );
     } else {
       // No quantity mentioned, ask for it
-      addMessage(`📦 **${product.name}** - $${product.price} (${product.available} available)\n\nHow many would you like?`, 'assistant');
+      addMessage(`✅ Selected: **${product.name}** @ ₦${product.price}\n\n**${product.available} units available**`, 'system');
       
       const messageId = generateUUID();
       setAwaitingConfirmation({
@@ -218,12 +228,10 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       return;
     }
 
-    // Update confirmation with actual quantity
+    // Update confirmation with actual quantity - this triggers the confirmation UI directly
     setAwaitingConfirmation(prev => 
       prev ? { ...prev, quantity: qty } : null
     );
-
-    addMessage(`📦 **${name}** - Quantity: ${qty}\n\nClick "Confirm Order" to complete your purchase.`, 'system');
   };
 
   const sendMessage = async (messageText?: string) => {
@@ -390,17 +398,21 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                   </div>
                 </div>
 
-                {/* Product Selection Buttons */}
-                {products.length > 0 && !awaitingConfirmation && (
-                  <div className="flex justify-start mt-3 flex-wrap gap-2 max-w-[85%]">
+                {/* Product Selection Buttons - Always Visible */}
+                {products.length > 0 && (
+                  <div className="flex justify-start mt-4 flex-wrap gap-2 w-full">
+                    <div className="w-full mb-2">
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Pick an option:</p>
+                    </div>
                     {products.map((product, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleProductSelect(product)}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-semibold"
+                        className="flex-1 min-w-[200px] px-3 py-2 bg-white hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-600 text-left rounded-lg text-xs transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-medium text-gray-800 hover:text-blue-700"
                       >
-                        ✓ {product.name}
+                        <div className="font-bold text-blue-600 text-sm">{product.name}</div>
+                        <div className="text-xs text-gray-600 mt-0.5">₦{product.price.toLocaleString()} • {product.available} units</div>
                       </button>
                     ))}
                   </div>
@@ -416,14 +428,15 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       <div className="bg-white border-t px-4 py-4 shadow-lg">
         <div className="max-w-4xl mx-auto">
           {awaitingConfirmation ? (
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4 mb-4">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl p-5 mb-4 shadow-lg">
               {awaitingConfirmation.quantity === 1 ? (
                 <>
-                  <p className="text-sm text-gray-700 mb-3">
-                    How many <strong>{awaitingConfirmation.name}</strong> would you like?
+                  <p className="text-sm font-semibold text-gray-800 mb-4">
+                    📦 How many units of <span className="text-blue-700">{awaitingConfirmation.name}</span> do you want?
                   </p>
                   <div className="flex gap-2">
                     <input
+                      ref={quantityInputRef}
                       type="number"
                       min="1"
                       defaultValue="1"
@@ -434,41 +447,44 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                         }
                       }}
                       placeholder="Enter quantity"
-                      className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-900"
+                      className="flex-1 px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent text-gray-900 font-semibold text-lg"
                     />
                     <button
-                      onClick={(e) => {
-                        const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
-                        handleQuantitySubmit(input.value);
+                      onClick={() => {
+                        if (quantityInputRef.current) {
+                          handleQuantitySubmit(quantityInputRef.current.value);
+                        }
                       }}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-md"
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-md font-semibold"
                     >
-                      →
+                      Next →
                     </button>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-sm text-gray-800 font-semibold mb-3">
-                    ✓ {awaitingConfirmation.quantity}x {awaitingConfirmation.name}
-                  </p>
+                  <div className="mb-4 p-3 bg-white rounded-lg border border-blue-200">
+                    <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide">Order Summary</p>
+                    <p className="text-lg font-bold text-gray-800 mt-2">
+                      {awaitingConfirmation.quantity}x {awaitingConfirmation.name}
+                    </p>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={handleConfirmOrder}
                       disabled={isLoading}
-                      className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-bold"
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-bold text-lg"
                     >
-                      ✅ Confirm Order
+                      {isLoading ? '⏳ Processing...' : '✅ Confirm & Order'}
                     </button>
                     <button
                       onClick={() => {
                         setAwaitingConfirmation(null);
-                        addMessage('Order cancelled', 'system');
                       }}
                       disabled={isLoading}
-                      className="px-4 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-all disabled:opacity-50"
+                      className="px-4 py-3 bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-all disabled:opacity-50 font-semibold"
                     >
-                      ✕
+                      ← Back
                     </button>
                   </div>
                 </>
@@ -483,7 +499,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={awaitingConfirmation ? "Enter quantity or search again..." : "Find medicines... e.g., 'paracetamol' or 'I want 2 aspirin'"}
+                placeholder={awaitingConfirmation ? "Enter quantity..." : "Find medicines... e.g., 'paracetamol' or 'I want 2 aspirin'"}
                 className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 bg-white placeholder-gray-400"
                 rows={1}
                 disabled={isLoading}
