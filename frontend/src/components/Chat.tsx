@@ -48,7 +48,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
     barcode: string;
     name: string;
-    quantity: number;
+    quantity: number | null;
     messageId: string;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -174,7 +174,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
-        quantity: 1,
+        quantity: null,
         messageId
       });
     }
@@ -429,7 +429,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
         <div className="max-w-4xl mx-auto">
           {awaitingConfirmation ? (
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl p-5 mb-4 shadow-lg">
-              {awaitingConfirmation.quantity === 1 ? (
+              {awaitingConfirmation.quantity === null ? (
                 <>
                   <p className="text-sm font-semibold text-gray-800 mb-4">
                     📦 How many units of <span className="text-blue-700">{awaitingConfirmation.name}</span> do you want?
