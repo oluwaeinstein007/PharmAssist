@@ -9,6 +9,7 @@ export interface RetrievedMedicine {
   category_name: string;
   category_slug: string;
   category_id: number;
+  barcode: string;
   price_updated_at: string;
   ingested_at: string;
   score: number;
@@ -73,6 +74,7 @@ export class RetrievalService {
         category_name: result.payload?.category_name || 'Unknown',
         category_slug: result.payload?.category_slug || 'unknown',
         category_id: result.payload?.category_id || 0,
+        barcode: result.payload?.barcode || '',
         price_updated_at: result.payload?.price_updated_at || new Date().toISOString(),
         ingested_at: result.payload?.ingested_at || new Date().toISOString(),
         score: result.score || 0,
@@ -157,6 +159,7 @@ export class RetrievalService {
         category_name: medicine.payload?.category_name || 'Unknown',
         category_slug: medicine.payload?.category_slug || 'unknown',
         category_id: medicine.payload?.category_id || 0,
+        barcode: medicine.payload?.barcode || '',
         price_updated_at: medicine.payload?.price_updated_at || new Date().toISOString(),
         ingested_at: medicine.payload?.ingested_at || new Date().toISOString(),
         score: medicine.score || 0,

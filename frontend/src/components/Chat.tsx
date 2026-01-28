@@ -10,12 +10,20 @@ interface Message {
   isLoading?: boolean;
 }
 
+interface ProductOption {
+  barcode: string;
+  name: string;
+  price: number;
+  available: number;
+}
+
 const QUICK_ACTIONS = [
   { label: '🔍 Search Paracetamol', query: 'search for paracetamol' },
   { label: '🤒 Fever Medicine', query: 'I have fever, what medicine should I take?' },
   { label: '🤕 Headache Relief', query: 'I have a headache' },
   { label: '🦟 Malaria Treatment', query: 'I have malaria with fever' },
   { label: '📦 Check Stock', query: 'Is amoxicillin in stock?' },
+  { label: '💊 Antibiotics', query: 'Find antibiotics' },
 ];
 
 export default function Chat() {
@@ -23,15 +31,29 @@ export default function Chat() {
     {
       id: 'welcome',
       type: 'system',
-      content: '👋 Welcome to PharmAssist! Ask me about medicines, check stock availability, or describe your symptoms.',
+      content: `👋 Welcome to PharmAssist!
+
+**How it works:**
+• Just tell me what you need: "Find paracetamol" or "I want 2 paracetamol"
+• Click a product to select it
+• Confirm quantity and that's it!
+
+No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
+    barcode: string;
+    name: string;
+    quantity: number | null;
+    messageId: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
 
   // Check API connection on mount
   useEffect(() => {
@@ -58,7 +80,6 @@ export default function Chat() {
   }, [messages, scrollToBottom]);
 
   const generateUUID = () => {
-    // Fallback UUID v4 generation for browser compatibility
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
@@ -87,14 +108,153 @@ export default function Chat() {
     ));
   }, []);
 
+  const extractProducts = (content: string): ProductOption[] => {
+    const products: ProductOption[] = [];
+    const productBlocks = content.split(/\n(?=\d+\.)/);
+    
+    for (const block of productBlocks) {
+      // Match product name with or without bold formatting
+      let nameMatch = block.match(/\d+\.\s*\*\*([^*]+)\*\*/);
+      if (!nameMatch) {
+        // Try without bold formatting
+        nameMatch = block.match(/\d+\.\s*([^\n]+)/);
+      }
+      
+      const barcodeMatch = block.match(/Barcode:\s*([^\n]+)/);
+      const priceMatch = block.match(/Price:\s*[₦N]?([\d.]+)/);
+      const quantityMatch = block.match(/Available:\s*(\d+)\s*units/);
+
+      if (nameMatch && barcodeMatch) {
+        const productName = nameMatch[1].trim().replace(/\*\*/g, '');
+        const barcode = barcodeMatch[1].trim();
+        
+        products.push({
+          barcode: barcode,
+          name: productName,
+          price: parseFloat(priceMatch?.[1] || '0'),
+          available: parseInt(quantityMatch?.[1] || '0'),
+        });
+      }
+    }
+
+    return products;
+  };
+
+  const extractQuantityFromText = (text: string): number | null => {
+    // Match patterns like "2 paracetamol", "3x aspirin", "buy 5", etc.
+    const matches = text.match(/(?:^|[^\d])(\d+)\s*(?:x|of|tabs?|pills?)?(?:\s|$)/i);
+    return matches ? parseInt(matches[1]) : null;
+  };
+
+  const handleProductSelect = (product: ProductOption, userQuantity?: number) => {
+    if (userQuantity && userQuantity > 0) {
+      // User mentioned quantity, show confirmation button
+      if (userQuantity > product.available) {
+        addMessage(`⚠️ Only ${product.available} units available. Would you like to order that instead?`, 'assistant');
+        userQuantity = product.available;
+      }
+      
+      const messageId = generateUUID();
+      setAwaitingConfirmation({
+        barcode: product.barcode,
+        name: product.name,
+        quantity: userQuantity,
+        messageId
+      });
+
+      addMessage(
+        `✅ Selected: **${product.name}** @ ₦${product.price}\n\nReady to order ${userQuantity} unit${userQuantity > 1 ? 's' : ''}?`,
+        'system'
+      );
+    } else {
+      // No quantity mentioned, ask for it
+      addMessage(`✅ Selected: **${product.name}** @ ₦${product.price}\n\n**${product.available} units available**`, 'system');
+      
+      const messageId = generateUUID();
+      setAwaitingConfirmation({
+        barcode: product.barcode,
+        name: product.name,
+        quantity: null,
+        messageId
+      });
+    }
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!awaitingConfirmation) return;
+
+    const { barcode, name, quantity } = awaitingConfirmation;
+    addMessage(`Confirming order for ${quantity}x ${name}...`, 'user');
+    const loadingId = addMessage('Processing your order...', 'assistant', true);
+    setIsLoading(true);
+    setAwaitingConfirmation(null);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Create cart with barcode ${barcode} qty ${quantity}`
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.error && !data.response) {
+        updateMessage(loadingId, `❌ Error: ${data.error}`, false);
+      } else {
+        updateMessage(loadingId, data.response || '✅ Order created successfully!', false);
+      }
+      setIsConnected(true);
+    } catch (error) {
+      updateMessage(loadingId, `❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
+      setIsConnected(false);
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleQuantitySubmit = (quantity: string) => {
+    const qty = parseInt(quantity);
+    if (!awaitingConfirmation || qty <= 0) {
+      addMessage('❌ Please enter a valid quantity', 'error');
+      return;
+    }
+
+    const { barcode, name, available } = awaitingConfirmation;
+    if (qty > available) {
+      addMessage(`⚠️ Only ${available} units available. Max allowed: ${available}`, 'error');
+      return;
+    }
+
+    // Update confirmation with actual quantity - this triggers the confirmation UI directly
+    setAwaitingConfirmation(prev => 
+      prev ? { ...prev, quantity: qty } : null
+    );
+  };
+
   const sendMessage = async (messageText?: string) => {
+    if (awaitingConfirmation) {
+      // User is entering quantity
+      const text = messageText || input.trim();
+      if (!text) return;
+
+      setInput('');
+      handleQuantitySubmit(text);
+      return;
+    }
+
     const text = messageText || input.trim();
     if (!text || isLoading) return;
 
     setInput('');
     addMessage(text, 'user');
     
-    const loadingId = addMessage('Thinking...', 'assistant', true);
+    // Extract quantity from user input
+    const mentionedQuantity = extractQuantityFromText(text);
+    
+    const loadingId = addMessage('Searching...', 'assistant', true);
     setIsLoading(true);
 
     try {
@@ -105,15 +265,30 @@ export default function Chat() {
       });
 
       const data = await response.json();
+      const responseText = data.response || 'No response received';
       
       if (data.error && !data.response) {
         updateMessage(loadingId, `❌ Error: ${data.error}`, false);
       } else {
-        updateMessage(loadingId, data.response || 'No response received', false);
+        updateMessage(loadingId, responseText, false);
+
+        // Auto-select if user mentioned quantity and there's only one product
+        const products = extractProducts(responseText);
+        if (mentionedQuantity && products.length === 1) {
+          // Auto-select the single product with mentioned quantity
+          setTimeout(() => {
+            handleProductSelect(products[0], mentionedQuantity);
+          }, 500);
+        } else if (products.length === 1 && !mentionedQuantity) {
+          // Single product found, ask for quantity
+          setTimeout(() => {
+            handleProductSelect(products[0]);
+          }, 500);
+        }
       }
       setIsConnected(true);
     } catch (error) {
-      updateMessage(loadingId, `❌ Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
+      updateMessage(loadingId, `❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
       setIsConnected(false);
     } finally {
       setIsLoading(false);
@@ -129,24 +304,19 @@ export default function Chat() {
   };
 
   const formatContent = (content: string) => {
-    // Simple markdown-like formatting
     return content
       .split('\n')
       .map((line, i) => {
-        // Bold text
         line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Headers
         if (line.startsWith('## ')) {
           return <h3 key={i} className="text-lg font-semibold mt-2 mb-1">{line.substring(3)}</h3>;
         }
         if (line.startsWith('# ')) {
           return <h2 key={i} className="text-xl font-bold mt-2 mb-1">{line.substring(2)}</h2>;
         }
-        // List items
         if (line.startsWith('- ')) {
           return <li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: line.substring(2) }} />;
         }
-        // Regular lines
         return <p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: line }} />;
       });
   };
@@ -181,7 +351,7 @@ export default function Chat() {
               <button
                 key={idx}
                 onClick={() => sendMessage(action.query)}
-                disabled={isLoading}
+                disabled={isLoading || !!awaitingConfirmation}
                 className="flex-shrink-0 px-3 py-1.5 bg-gray-100 hover:bg-blue-100 hover:text-blue-700 rounded-full text-sm text-black transition-all disabled:opacity-50"
               >
                 {action.label}
@@ -194,46 +364,134 @@ export default function Chat() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-4xl mx-auto space-y-4">
-          {messages.map(message => (
-            <div
-              key={message.id}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-                  message.type === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-md'
-                    : message.type === 'assistant'
-                    ? 'bg-white rounded-bl-md'
-                    : message.type === 'error'
-                    ? 'bg-red-50 border border-red-200 text-red-800'
-                    : 'bg-amber-50 border border-amber-200 text-amber-800'
-                } ${message.isLoading ? 'animate-pulse' : ''}`}
-              >
-                {message.type === 'assistant' && !message.isLoading ? (
-                  <div className="text-gray-800 prose prose-sm max-w-none">
-                    {formatContent(message.content)}
+          {messages.map((message) => {
+            const products = message.type === 'assistant' ? extractProducts(message.content) : [];
+            
+            return (
+              <div key={message.id}>
+                <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
+                      message.type === 'user'
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-md'
+                        : message.type === 'assistant'
+                        ? 'bg-white rounded-bl-md'
+                        : message.type === 'error'
+                        ? 'bg-red-50 border border-red-200 text-red-800'
+                        : 'bg-amber-50 border border-amber-200 text-amber-800'
+                    } ${message.isLoading ? 'animate-pulse' : ''}`}
+                  >
+                    {message.type === 'assistant' && !message.isLoading ? (
+                      <div className="text-gray-800 prose prose-sm max-w-none">
+                        {formatContent(message.content)}
+                      </div>
+                    ) : (
+                      <p className={message.type === 'user' ? '' : 'text-gray-800'}>
+                        {message.content}
+                      </p>
+                    )}
+                    <span className={`text-xs mt-2 block ${
+                      message.type === 'user' ? 'text-blue-100' : 'text-gray-400'
+                    }`}>
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
-                ) : (
-                  <p className={message.type === 'user' ? '' : 'text-gray-800'}>
-                    {message.content}
-                  </p>
+                </div>
+
+                {/* Product Selection Buttons - Always Visible */}
+                {products.length > 0 && (
+                  <div className="flex justify-start mt-4 flex-wrap gap-2 w-full">
+                    <div className="w-full mb-2">
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Pick an option:</p>
+                    </div>
+                    {products.map((product, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleProductSelect(product)}
+                        disabled={isLoading}
+                        className="flex-1 min-w-[200px] px-3 py-2 bg-white hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-600 text-left rounded-lg text-xs transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-medium text-gray-800 hover:text-blue-700"
+                      >
+                        <div className="font-bold text-blue-600 text-sm">{product.name}</div>
+                        <div className="text-xs text-gray-600 mt-0.5">₦{product.price.toLocaleString()} • {product.available} units</div>
+                      </button>
+                    ))}
+                  </div>
                 )}
-                <span className={`text-xs mt-2 block ${
-                  message.type === 'user' ? 'text-blue-100' : 'text-gray-400'
-                }`}>
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input */}
+      {/* Input / Confirmation Area */}
       <div className="bg-white border-t px-4 py-4 shadow-lg">
         <div className="max-w-4xl mx-auto">
+          {awaitingConfirmation ? (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl p-5 mb-4 shadow-lg">
+              {awaitingConfirmation.quantity === null ? (
+                <>
+                  <p className="text-sm font-semibold text-gray-800 mb-4">
+                    📦 How many units of <span className="text-blue-700">{awaitingConfirmation.name}</span> do you want?
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      ref={quantityInputRef}
+                      type="number"
+                      min="1"
+                      defaultValue="1"
+                      autoFocus
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleQuantitySubmit(e.currentTarget.value);
+                        }
+                      }}
+                      placeholder="Enter quantity"
+                      className="flex-1 px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent text-gray-900 font-semibold text-lg"
+                    />
+                    <button
+                      onClick={() => {
+                        if (quantityInputRef.current) {
+                          handleQuantitySubmit(quantityInputRef.current.value);
+                        }
+                      }}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-md font-semibold"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-4 p-3 bg-white rounded-lg border border-blue-200">
+                    <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide">Order Summary</p>
+                    <p className="text-lg font-bold text-gray-800 mt-2">
+                      {awaitingConfirmation.quantity}x {awaitingConfirmation.name}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConfirmOrder}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-bold text-lg"
+                    >
+                      {isLoading ? '⏳ Processing...' : '✅ Confirm & Order'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAwaitingConfirmation(null);
+                      }}
+                      disabled={isLoading}
+                      className="px-4 py-3 bg-gray-400 hover:bg-gray-500 text-white rounded-lg transition-all disabled:opacity-50 font-semibold"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
           <div className="flex gap-3 items-end">
             <div className="flex-1 relative">
               <textarea
@@ -241,7 +499,7 @@ export default function Chat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder="Describe your symptoms or ask about medicines..."
+                placeholder={awaitingConfirmation ? "Enter quantity..." : "Find medicines... e.g., 'paracetamol' or 'I want 2 aspirin'"}
                 className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 bg-white placeholder-gray-400"
                 rows={1}
                 disabled={isLoading}
@@ -265,7 +523,7 @@ export default function Chat() {
             </button>
           </div>
           <p className="text-xs text-gray-400 mt-2 text-center">
-            Press Enter to send • Shift+Enter for new line
+            Press Enter to send
           </p>
         </div>
       </div>
