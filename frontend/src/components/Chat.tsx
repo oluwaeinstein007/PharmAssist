@@ -48,6 +48,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
     barcode: string;
     name: string;
+    available: number;
     quantity: number | null;
     messageId: string;
   } | null>(null);
@@ -158,6 +159,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        available: product.available,
         quantity: userQuantity,
         messageId
       });
@@ -174,6 +176,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        available: product.available,
         quantity: null,
         messageId
       });
