@@ -48,6 +48,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
     barcode: string;
     name: string;
+    available: number;
     quantity: number | null;
     messageId: string;
   } | null>(null);
@@ -158,6 +159,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        available: product.available,
         quantity: userQuantity,
         messageId
       });
@@ -174,6 +176,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        available: product.available,
         quantity: null,
         messageId
       });
@@ -304,6 +307,8 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   };
 
   const formatContent = (content: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
     return content
       .split('\n')
       .map((line, i) => {
@@ -317,6 +322,38 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
         if (line.startsWith('- ')) {
           return <li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: line.substring(2) }} />;
         }
+        
+        // Check if line contains a URL
+        const urlMatch = line.match(urlRegex);
+        if (urlMatch) {
+          const parts = line.split(urlRegex);
+          return (
+            <div key={i} className="my-2">
+              <p className="text-sm text-gray-800 mb-2">
+                {parts.map((part, idx) => 
+                  part.match(urlRegex) ? null : <span key={idx}>{part}</span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {urlMatch.map((url, idx) => (
+                  <a
+                    key={idx}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-semibold transition-all shadow-md hover:shadow-lg text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    Complete Purchase
+                  </a>
+                ))}
+              </div>
+            </div>
+          );
+        }
+        
         return <p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: line }} />;
       });
   };
