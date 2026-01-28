@@ -35,6 +35,11 @@ export const CreateCartTool = {
 ✅ Cart created successfully!
 Cart ID (UID): ${result.cartId}
 Items: ${args.items.map(item => `${item.barcode} (qty: ${item.qty})`).join(", ")}
+${
+  result.cartUrl
+    ? `\n🛒 Complete your transaction here: ${result.cartUrl}`
+    : ""
+}
 `;
       } else {
         throw new Error(result.error || "Failed to create cart");

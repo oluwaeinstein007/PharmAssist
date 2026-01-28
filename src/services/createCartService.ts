@@ -27,6 +27,7 @@ export interface CreateCartResponse {
   success: boolean;
   message?: string;
   cartId?: string;
+  cartUrl?: string;
   error?: string;
 }
 
@@ -35,7 +36,7 @@ export class CreateCartService {
   private readonly apiEndpoint: string;
 
   constructor() {
-    this.apiBaseUrl = process.env.UNIFIED_PRODUCTS_BASE_URL || 'https://cc.medplusnig.com/api';
+    this.apiBaseUrl = process.env.CART_BASE_URL || 'https://mshop.mptechteam.com/api/v1/';
     this.apiEndpoint = `${this.apiBaseUrl}/bot/cart-actions`;
   }
 
@@ -75,6 +76,7 @@ export class CreateCartService {
         success: true,
         message: "Cart created successfully",
         cartId: uid,
+        cartUrl: result.data?.url || undefined,
         ...result,
       };
     } catch (error: unknown) {
