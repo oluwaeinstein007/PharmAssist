@@ -627,15 +627,15 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsCartOpen(prev => !prev)}
-                className="px-3 py-1 bg-white border rounded-md hover:bg-gray-50 text-sm"
+                className="px-3 py-1 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-sm text-gray-900 font-semibold"
                 disabled={isLoading}
               >
-                🛒 Cart ({cartItems.length})
+                🛒 Cart <span className="ml-1 text-sm text-gray-700">({cartItems.length})</span>
               </button>
               {cartItems.length > 0 ? (
-                <div className="text-sm text-gray-800">{cartItems.reduce((s, it) => s + (it.quantity || 0), 0)} items</div>
+                <div className="text-sm text-gray-900 font-medium">{cartItems.reduce((s, it) => s + (it.quantity || 0), 0)} items</div>
               ) : (
-                <div className="text-sm text-gray-600">Cart is empty</div>
+                <div className="text-sm text-gray-700">Cart is empty</div>
               )}
             </div>
 
@@ -707,7 +707,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                           const v = Math.max(1, Math.min(Number(e.target.value) || 1, it.available));
                           setCartItems(prev => prev.map(p => p.barcode === it.barcode ? { ...p, quantity: v } : p));
                         }}
-                        className="w-16 px-2 py-1 border rounded-md text-sm"
+                        className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
                       <button
                         onClick={() => setCartItems(prev => prev.filter(p => p.barcode !== it.barcode))}
