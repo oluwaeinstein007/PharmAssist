@@ -6,10 +6,11 @@ const cartItemSchema = z.object({
   qty: z.union([z.string(), z.number()]).describe("The quantity of the medicine"),
 });
 
+// Accept either a single item or an array of items to make the tool more flexible
 const createCartParamsSchema = z.object({
   items: z
-    .array(cartItemSchema)
-    .describe("Array of items to add to the cart, each with barcode and quantity"),
+    .union([cartItemSchema, z.array(cartItemSchema)])
+    .describe("Array of items or a single item to add to the cart, each with barcode and quantity"),
 });
 
 export const CreateCartTool = {
@@ -23,7 +24,12 @@ export const CreateCartTool = {
     const createCartService = new CreateCartService();
 
     try {
-      const cartItems: CartItem[] = args.items.map(item => ({
+      // Normalize single-item input to an array so callers can pass either a single item or an array
+      const itemsArray: Array<z.infer<typeof cartItemSchema>> = Array.isArray(args.items)
+        ? args.items
+        : [args.items];
+
+      const cartItems: CartItem[] = itemsArray.map(item => ({
         barcode: item.barcode,
         qty: item.qty,
       }));

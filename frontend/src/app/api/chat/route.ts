@@ -171,7 +171,7 @@ const pharmacyTools: FunctionDeclaration[] = [
   } as FunctionDeclaration,
   {
     name: 'create_cart',
-    description: 'Create a shopping cart with medicine items. Each item requires a barcode and quantity.',
+    description: 'Create a shopping cart with medicine items. Each item requires a barcode and quantity. Accepts either a single item object or an array of items.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -186,7 +186,7 @@ const pharmacyTools: FunctionDeclaration[] = [
               } as Schema,
               qty: {
                 type: SchemaType.STRING,
-                description: 'The quantity of the medicine'
+                description: 'The quantity of the medicine (string or number accepted)'
               } as Schema
             },
             required: ['barcode', 'qty']
@@ -330,9 +330,13 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    const { message } = await request.json();
-    
-    if (!message || typeof message !== 'string') {
+    const body = await request.json();
+    const message = typeof body === 'object' && body?.message ? String(body.message) : undefined;
+    const action = typeof body === 'object' && body?.action ? String(body.action) : undefined;
+    const items = Array.isArray(body?.items) ? body.items : undefined;
+
+    // Allow requests that omit `message` but include an explicit `action` (e.g. create_cart, batch_search)
+    if (!message && !action) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
@@ -345,18 +349,67 @@ export async function POST(request: NextRequest) {
 
     // Create a new MCP client for this request
     const mcpClient = new MCPClient();
-    
+
     // Initialize MCP connection
     const initialized = await mcpClient.initialize();
     if (!initialized) {
       console.warn('MCP initialization failed, continuing without MCP tools');
     }
-    
-    // Process with Gemini
-    const response = await processWithGemini(message, mcpClient);
-    
+
+    // If caller explicitly asked to create a cart (frontend checkout), call the tool directly
+    if (action === 'create_cart') {
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ error: 'Items array is required for create_cart' }, { status: 400 });
+      }
+
+      try {
+        const toolResult = await mcpClient.callTool('CREATE_CART', { items });
+        console.log(`[Chat][CREATE_CART] Tool result: ${toolResult.substring(0, 200)}`);
+        return NextResponse.json({ response: String(toolResult), timestamp: new Date().toISOString() });
+      } catch (err) {
+        console.error('[Chat][CREATE_CART] Error calling tool:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        return NextResponse.json({ error: errorMessage, response: `❌ Failed to create cart: ${errorMessage}` }, { status: 500 });
+      }
+    }
+
+    // If caller wants to search for multiple medicine names at once
+    if (action === 'batch_search') {
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ error: 'Items array is required for batch_search' }, { status: 400 });
+      }
+
+      try {
+        const queries = items.slice(0, 6).map(String); // limit to 6 to avoid abuse
+        let aggregated = '';
+
+        for (const q of queries) {
+          try {
+            const toolResult = await mcpClient.callTool('SEARCH_MEDS', { name: q });
+            aggregated += `Results for "${q}":\n${toolResult}\n\n`;
+          } catch (err) {
+            console.error(`[Chat][BATCH_SEARCH] Error searching for ${q}:`, err);
+            aggregated += `Results for "${q}":\n⚠️ Error searching for this item.\n\n`;
+          }
+        }
+
+        if (!aggregated.trim()) {
+          aggregated = 'No results found for the given medicines.';
+        }
+
+        return NextResponse.json({ response: aggregated, timestamp: new Date().toISOString() });
+      } catch (err) {
+        console.error('[Chat][BATCH_SEARCH] Unexpected error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        return NextResponse.json({ error: errorMessage, response: `❌ Failed to search for items: ${errorMessage}` }, { status: 500 });
+      }
+    }
+
+    // Process with Gemini for general chat flow
+    const response = await processWithGemini(message!, mcpClient);
+
     console.log(`[Chat] Processed in ${Date.now() - startTime}ms`);
-    
+
     return NextResponse.json({ 
       response,
       timestamp: new Date().toISOString()
