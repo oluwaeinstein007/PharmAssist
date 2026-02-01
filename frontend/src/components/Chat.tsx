@@ -48,6 +48,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
     barcode: string;
     name: string;
+    price?: number;
     available: number;
     quantity: number | null;
     messageId: string;
