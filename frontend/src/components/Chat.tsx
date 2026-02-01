@@ -52,6 +52,13 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
     quantity: number | null;
     messageId: string;
   } | null>(null);
+
+  // Allow adding multiple products to a cart
+  const [cartItems, setCartItems] = useState<Array<{ barcode: string; name: string; price: number; available: number; quantity: number }>>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Compute cart totals
+  const cartTotal = cartItems.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +97,9 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       return v.toString(16);
     });
   };
+
+  // Format number to currency string (Naira)
+  const formatCurrency = (n: number) => `₦${n.toFixed(2)}`; 
 
   const addMessage = useCallback((content: string, type: Message['type'], isLoading = false) => {
     const id = generateUUID();
@@ -159,6 +169,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        price: product.price,
         available: product.available,
         quantity: userQuantity,
         messageId
@@ -176,6 +187,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       setAwaitingConfirmation({
         barcode: product.barcode,
         name: product.name,
+        price: product.price,
         available: product.available,
         quantity: null,
         messageId
@@ -183,38 +195,67 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
     }
   };
 
-  const handleConfirmOrder = async () => {
-    if (!awaitingConfirmation) return;
+  const handleConfirmOrder = async (checkoutNow = false, overrideQty?: number, overrideItem?: { barcode: string; name: string; available: number; price?: number }) => {
+    // Determine item and quantity to use
+    const item = overrideItem ?? awaitingConfirmation;
+    if (!item) return;
 
-    const { barcode, name, quantity } = awaitingConfirmation;
-    addMessage(`Confirming order for ${quantity}x ${name}...`, 'user');
-    const loadingId = addMessage('Processing your order...', 'assistant', true);
-    setIsLoading(true);
+    const { barcode, name, available, price } = item as { barcode: string; name: string; available: number; price?: number };
+    const rawQty = overrideQty ?? (awaitingConfirmation?.quantity ?? 1);
+    const qty = Math.max(1, Number(rawQty) || 1);
+    const qtyToAdd = Math.min(qty, available ?? qty);
+
+    // Add to local cart (merge quantities, respect availability)
+    setCartItems(prev => {
+      const existing = prev.find(p => p.barcode === barcode);
+      if (existing) {
+        return prev.map(p =>
+          p.barcode === barcode
+            ? { ...p, quantity: Math.min((p.quantity || 0) + qtyToAdd, p.available) }
+            : p
+        );
+      }
+
+      return [...prev, { barcode, name, price: price ?? 0, available: available ?? 0, quantity: qtyToAdd }];
+    });
+
+    addMessage(`Added ${qtyToAdd}x **${name}** to cart`, 'system');
     setAwaitingConfirmation(null);
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Create cart with barcode ${barcode} qty ${quantity}`
-        })
-      });
+    // If user wants to checkout immediately, call create_cart action for this item
+    if (checkoutNow) {
+      addMessage(`Checkout: ${qtyToAdd}x ${name}...`, 'user');
+      const loadingId = addMessage('Processing your order...', 'assistant', true);
+      setIsLoading(true);
 
-      const data = await response.json();
-      
-      if (data.error && !data.response) {
-        updateMessage(loadingId, `❌ Error: ${data.error}`, false);
-      } else {
-        updateMessage(loadingId, data.response || '✅ Order created successfully!', false);
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_cart', items: [{ barcode, qty: qtyToAdd }] })
+        });
+
+        const data = await response.json();
+        if (data.error && !data.response) {
+          updateMessage(loadingId, `❌ Error: ${data.error}`, false);
+        } else {
+          updateMessage(loadingId, data.response || '✅ Order created successfully!', false);
+
+          // Add a local summary for the single-item checkout
+          const itemTotal = (price || 0) * qtyToAdd;
+          addMessage(`✅ Cart created successfully!\n${name} (qty: ${qtyToAdd}, price: ${formatCurrency(price || 0)})\nTotal: ${formatCurrency(itemTotal)}`, 'system');
+
+          // Clear cart on success
+          setCartItems([]);
+        }
+        setIsConnected(true);
+      } catch (error) {
+        updateMessage(loadingId, `❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
+        setIsConnected(false);
+      } finally {
+        setIsLoading(false);
+        inputRef.current?.focus();
       }
-      setIsConnected(true);
-    } catch (error) {
-      updateMessage(loadingId, `❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
-      setIsConnected(false);
-    } finally {
-      setIsLoading(false);
-      inputRef.current?.focus();
     }
   };
 
@@ -231,10 +272,11 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       return;
     }
 
-    // Update confirmation with actual quantity - this triggers the confirmation UI directly
-    setAwaitingConfirmation(prev => 
-      prev ? { ...prev, quantity: qty } : null
-    );
+    // Update confirmation with actual quantity
+    setAwaitingConfirmation(prev => prev ? { ...prev, quantity: qty } : null);
+
+    // Immediately add to cart using the known quantity and item details to avoid race conditions
+    handleConfirmOrder(false, qty, { barcode, name, available, price: awaitingConfirmation?.price ?? 0 });
   };
 
   const sendMessage = async (messageText?: string) => {
@@ -508,7 +550,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={handleConfirmOrder}
+                      onClick={() => handleConfirmOrder(true)}
                       disabled={isLoading}
                       className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-bold text-lg"
                     >
@@ -528,6 +570,104 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
               )}
             </div>
           ) : null}
+
+          {/* Cart Summary & Checkout */}
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsCartOpen(prev => !prev)}
+                className="px-3 py-1 bg-white border rounded-md hover:bg-gray-50 text-sm"
+                disabled={isLoading}
+              >
+                🛒 Cart ({cartItems.length})
+              </button>
+              {cartItems.length > 0 ? (
+                <div className="text-sm text-gray-800">{cartItems.reduce((s, it) => s + (it.quantity || 0), 0)} items</div>
+              ) : (
+                <div className="text-sm text-gray-600">Cart is empty</div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-sm font-semibold text-gray-900">Total: {formatCurrency(cartTotal)}</div>
+              <button
+                onClick={async () => {
+                  if (cartItems.length === 0) return;
+                  // Snapshot items for summary before clearing
+                  const itemsSnapshot = cartItems.map(i => ({ ...i }));
+                  // Format items for the API
+                  const itemsPayload = cartItems.map(i => ({ barcode: i.barcode, qty: i.quantity }));
+                  const loadingId = addMessage('Processing your order...', 'assistant', true);
+                  setIsLoading(true);
+                  try {
+                    const response = await fetch('/api/chat', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'create_cart', items: itemsPayload })
+                    });
+                    const data = await response.json();
+                    if (data.error && !data.response) {
+                      updateMessage(loadingId, `❌ Error: ${data.error}`, false);
+                    } else {
+                      updateMessage(loadingId, data.response || '✅ Order created successfully!', false);
+
+                      // Add a local summary with product names and total price
+                      const summaryLines = itemsSnapshot.map(it => `${it.name} (qty: ${it.quantity}, price: ${formatCurrency(it.price)})`);
+                      const totalLine = `Total: ${formatCurrency(itemsSnapshot.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0))}`;
+                      addMessage(`✅ Cart created successfully!\n${summaryLines.join('\n')}\n${totalLine}`, 'system');
+
+                      setCartItems([]);
+                      setIsCartOpen(false);
+                    }
+                    setIsConnected(true);
+                  } catch (err) {
+                    updateMessage(loadingId, `❌ Failed: ${err instanceof Error ? err.message : 'Unknown error'}`, false);
+                    setIsConnected(false);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={cartItems.length === 0 || isLoading}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-sm"
+              >
+                Checkout
+              </button>
+            </div>
+          </div>
+
+          {isCartOpen && (
+            <div className="mb-3 bg-white border rounded-lg p-3">
+              <h3 className="text-sm font-semibold mb-2 text-gray-900">Your Cart</h3>
+              <div className="flex flex-col gap-2">
+                {cartItems.map((it, idx) => (
+                  <div key={it.barcode} className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">{it.name}</div>
+                      <div className="text-xs text-gray-700">Barcode: {it.barcode}</div>
+                      <div className="text-xs text-gray-700">Price: {formatCurrency(it.price)} • Subtotal: {formatCurrency((it.price || 0) * (it.quantity || 0))}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={it.available}
+                        value={it.quantity}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.min(Number(e.target.value) || 1, it.available));
+                          setCartItems(prev => prev.map(p => p.barcode === it.barcode ? { ...p, quantity: v } : p));
+                        }}
+                        className="w-16 px-2 py-1 border rounded-md text-sm"
+                      />
+                      <button
+                        onClick={() => setCartItems(prev => prev.filter(p => p.barcode !== it.barcode))}
+                        className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-md"
+                      >Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3 items-end">
             <div className="flex-1 relative">
