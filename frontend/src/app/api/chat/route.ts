@@ -335,7 +335,8 @@ export async function POST(request: NextRequest) {
     const action = typeof body === 'object' && body?.action ? String(body.action) : undefined;
     const items = Array.isArray(body?.items) ? body.items : undefined;
 
-    if (!message && action !== 'create_cart') {
+    // Allow requests that omit `message` but include an explicit `action` (e.g. create_cart, batch_search)
+    if (!message && !action) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
@@ -369,6 +370,38 @@ export async function POST(request: NextRequest) {
         console.error('[Chat][CREATE_CART] Error calling tool:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         return NextResponse.json({ error: errorMessage, response: `❌ Failed to create cart: ${errorMessage}` }, { status: 500 });
+      }
+    }
+
+    // If caller wants to search for multiple medicine names at once
+    if (action === 'batch_search') {
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ error: 'Items array is required for batch_search' }, { status: 400 });
+      }
+
+      try {
+        const queries = items.slice(0, 6).map(String); // limit to 6 to avoid abuse
+        let aggregated = '';
+
+        for (const q of queries) {
+          try {
+            const toolResult = await mcpClient.callTool('SEARCH_MEDS', { name: q });
+            aggregated += `Results for "${q}":\n${toolResult}\n\n`;
+          } catch (err) {
+            console.error(`[Chat][BATCH_SEARCH] Error searching for ${q}:`, err);
+            aggregated += `Results for "${q}":\n⚠️ Error searching for this item.\n\n`;
+          }
+        }
+
+        if (!aggregated.trim()) {
+          aggregated = 'No results found for the given medicines.';
+        }
+
+        return NextResponse.json({ response: aggregated, timestamp: new Date().toISOString() });
+      } catch (err) {
+        console.error('[Chat][BATCH_SEARCH] Unexpected error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        return NextResponse.json({ error: errorMessage, response: `❌ Failed to search for items: ${errorMessage}` }, { status: 500 });
       }
     }
 

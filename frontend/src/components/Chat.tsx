@@ -295,7 +295,58 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
 
     setInput('');
     addMessage(text, 'user');
-    
+
+    // Attempt to detect multiple medicine names in one message
+    const parseMultiMedicines = (msg: string) => {
+      // Remove common lead-in phrases then split by comma/and/&/+ tokens
+      const cleaned = msg.replace(/^.*?\b(?:need|want|get|give me|please get me|i need|i want|i'd like to buy)\b\s*/i, '').trim();
+      const tokens = cleaned.split(/\s*(?:,|and|&|\+)\s*/i).map(t => t.trim()).filter(Boolean);
+      if (tokens.length <= 1) return [];
+      return tokens.slice(0, 6); // limit to 6 queries
+    };
+
+    const batchQueries = parseMultiMedicines(text);
+
+    // If user provided multiple medicines, call the batch_search flow
+    if (batchQueries.length > 1) {
+      const loadingId = addMessage('Searching multiple items...', 'assistant', true);
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'batch_search', items: batchQueries })
+        });
+
+        const data = await response.json();
+        const responseText = data.response || 'No response received';
+
+        if (data.error && !data.response) {
+          updateMessage(loadingId, `❌ Error: ${data.error}`, false);
+        } else {
+          updateMessage(loadingId, responseText, false);
+
+          const products = extractProducts(responseText);
+          // If a single product across the aggregated results had a quantity mention in the original message, auto-select it
+          const mentionedQuantity = extractQuantityFromText(text);
+          if (mentionedQuantity && products.length === 1) {
+            handleProductSelect(products[0], mentionedQuantity);
+          }
+        }
+
+        setIsConnected(true);
+      } catch (error) {
+        updateMessage(loadingId, `❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`, false);
+        setIsConnected(false);
+      } finally {
+        setIsLoading(false);
+        inputRef.current?.focus();
+      }
+
+      return;
+    }
+
+    // Fallback to the normal single-message flow
     // Extract quantity from user input
     const mentionedQuantity = extractQuantityFromText(text);
     
