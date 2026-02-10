@@ -35,13 +35,13 @@ export class RetrievalService {
    * Initialize the retrieval service and Qdrant connection
    */
   async initialize(): Promise<void> {
-    console.log('🚀 Initializing RetrievalService...');
+    console.log('Initializing RetrievalService...');
     try {
       await this.qdrantService.initialize();
-      console.log('✅ RetrievalService initialized successfully');
+      console.log('RetrievalService initialized successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Failed to initialize RetrievalService: ${message}`);
+      console.error(`Failed to initialize RetrievalService: ${message}`);
       throw error;
     }
   }
@@ -55,15 +55,15 @@ export class RetrievalService {
   async searchMedicines(query: string, limit: number = 5): Promise<SearchResult> {
     const startTime = Date.now();
     try {
-      console.log(`🔍 Searching for medicines: "${query}" (limit: ${limit})`);
+      console.log(`Searching for medicines: "${query}" (limit: ${limit})`);
 
       // Step 1: Generate embedding for the query
       const queryEmbedding = await this.embeddingService.generateEmbedding(query);
-      console.log(`✅ Query embedding generated`);
+      console.log(`Query embedding generated`);
 
       // Step 2: Search in Qdrant
       const searchResults = await this.qdrantService.search(queryEmbedding, limit);
-      console.log(`✅ Found ${searchResults.length} results in Qdrant`);
+      console.log(`Found ${searchResults.length} results in Qdrant`);
 
       // Step 3: Transform results to RetrievedMedicine format
       const medicines: RetrievedMedicine[] = searchResults.map((result: any) => ({
@@ -81,7 +81,7 @@ export class RetrievalService {
       }));
 
       const executionTime = Date.now() - startTime;
-      console.log(`✅ Search completed in ${executionTime}ms`);
+      console.log(`Search completed in ${executionTime}ms`);
 
       return {
         query,
@@ -91,7 +91,7 @@ export class RetrievalService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Error searching medicines: ${message}`);
+      console.error(`Error searching medicines: ${message}`);
       return {
         query,
         medicines: [],
@@ -108,7 +108,7 @@ export class RetrievalService {
    * @returns Array of matching medicines
    */
   async searchByProductName(productName: string, limit: number = 5): Promise<SearchResult> {
-    console.log(`🔍 Searching for medicine by product name: "${productName}"`);
+    console.log(`Searching for medicine by product name: "${productName}"`);
     return this.searchMedicines(productName, limit);
   }
 
@@ -119,7 +119,7 @@ export class RetrievalService {
    * @returns Array of matching medicines
    */
   async searchByCategory(category: string, limit: number = 10): Promise<SearchResult> {
-    console.log(`🔍 Searching for medicines in category: "${category}"`);
+    console.log(`Searching for medicines in category: "${category}"`);
     const query = `medicines in ${category} category`;
     return this.searchMedicines(query, limit);
   }
@@ -131,7 +131,7 @@ export class RetrievalService {
    */
   async getMedicineById(medicineId: string): Promise<RetrievedMedicine | null> {
     try {
-      console.log(`📖 Fetching medicine details for ID: ${medicineId}`);
+      console.log(`Fetching medicine details for ID: ${medicineId}`);
 
       // Note: Qdrant doesn't have a direct "get by ID" method for all types
       // This is a placeholder implementation. In production, you might want to:
@@ -147,7 +147,7 @@ export class RetrievalService {
 
       const medicine = results.find((r: any) => String(r.id) === medicineId);
       if (!medicine) {
-        console.log(`⚠️  Medicine not found: ${medicineId}`);
+        console.log(`Medicine not found: ${medicineId}`);
         return null;
       }
 
@@ -166,7 +166,7 @@ export class RetrievalService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Error fetching medicine details: ${message}`);
+      console.error(`Error fetching medicine details: ${message}`);
       return null;
     }
   }
@@ -179,7 +179,7 @@ export class RetrievalService {
    */
   async getRecommendations(symptoms: string[], limit: number = 5): Promise<SearchResult> {
     const query = symptoms.join(', ');
-    console.log(`💊 Getting medicine recommendations for symptoms: ${query}`);
+    console.log(`Getting medicine recommendations for symptoms: ${query}`);
     return this.searchMedicines(query, limit);
   }
 

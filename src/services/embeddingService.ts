@@ -1,11 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 export class EmbeddingService {
   private anthropicClient?: Anthropic;
-  private googleClient?: GoogleGenerativeAI;
+  private googleClient?: GoogleGenAI;
   private provider: 'anthropic' | 'google' | 'none';
-  private embeddingModel: string;
+  private embeddingModel: string = 'gemini-embedding-001';
+  private embeddingDimensions: number = 768;
 
   constructor() {
     const provider = process.env.EMBEDDING_PROVIDER || 'anthropic';
@@ -19,14 +20,16 @@ export class EmbeddingService {
         this.anthropicClient = new Anthropic({ apiKey });
       }
       this.embeddingModel = process.env.ANTHROPIC_EMBEDDING_MODEL || 'text-embedding-3-small';
+      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '768', 10);
     } else if (this.provider === 'google') {
       const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
         console.warn('GOOGLE_API_KEY or GEMINI_API_KEY not set. Embeddings will not work with Google provider.');
       } else {
-        this.googleClient = new GoogleGenerativeAI(apiKey);
+        this.googleClient = new GoogleGenAI({ apiKey });
       }
-      this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'text-embedding-004';
+      this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'gemini-embedding-001';
+      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '768', 10);
     }
 
     console.log(`Embedding service initialized with provider: ${this.provider}`);
@@ -63,7 +66,7 @@ export class EmbeddingService {
     try {
       // Note: Anthropic doesn't have a native embedding API in the current SDK
       // This is a placeholder - you may need to use a different approach or provider
-      console.warn('⚠️  Anthropic native embeddings not available. Using Google instead.');
+      console.warn('Anthropic native embeddings not available. Using Google instead.');
       return this.generateGoogleEmbedding(text);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -73,7 +76,7 @@ export class EmbeddingService {
   }
 
   /**
-   * Generate embedding using Google's API
+   * Generate embedding using Google's API (@google/genai SDK — uses v1 endpoint)
    */
   private async generateGoogleEmbedding(text: string): Promise<number[]> {
     if (!this.googleClient) {
@@ -81,16 +84,19 @@ export class EmbeddingService {
     }
 
     try {
-      const model = this.googleClient.getGenerativeModel({ model: 'text-embedding-004' });
-      
-      const result = await model.embedContent(text);
-      const embedding = result.embedding.values;
+      const result = await this.googleClient.models.embedContent({
+        model: this.embeddingModel,
+        contents: text,
+        config: { outputDimensionality: this.embeddingDimensions },
+      });
+
+      const embedding = result.embeddings?.[0]?.values;
 
       if (!embedding || embedding.length === 0) {
         throw new Error('Empty embedding returned from Google API');
       }
 
-      console.log(`✅ Embedding generated (${embedding.length} dimensions)`);
+      console.log(`Embedding generated (${embedding.length} dimensions)`);
       return embedding;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

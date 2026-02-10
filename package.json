@@ -11,7 +11,11 @@
     "chat": "tsx run_chat.ts",
     "server": "tsx src/index.ts",
     "server:http": "tsx src/index.ts --http",
-    "serve": "npx serve public -l 8080"
+    "serve": "npx serve public -l 8080",
+    "api": "tsx src/api/index.ts",
+    "api:dev": "tsx watch src/api/index.ts",
+    "api:bun": "bun run src/api/index.ts",
+    "api:bun:dev": "bun --watch run src/api/index.ts"
   },
   "keywords": [],
   "author": "",
@@ -26,12 +30,15 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@google/genai": "^1.34.0",
     "@google/generative-ai": "^0.24.1",
+    "@hono/node-server": "^1.19.9",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@qdrant/js-client-rest": "^1.16.2",
     "axios": "^1.13.2",
     "cheerio": "^1.1.2",
     "dotenv": "^17.2.3",
     "fastmcp": "^3.27.0",
+    "hono": "^4.11.9",
+    "jose": "^6.1.3",
     "langchain": "^1.2.2",
     "puppeteer": "^24.33.0",
     "zod": "^4.2.1"

@@ -33,7 +33,7 @@ export const NotifyAdminTool = {
                 priority: args.priority
             });
             return `
-            ✅ Successfully searched medicines with name ${args.medicine_name}.
+            Successfully searched medicines with name ${args.medicine_name}.
             Log Meds: ${medsList}
             `;
         } catch (error: unknown) {

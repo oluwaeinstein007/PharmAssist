@@ -33,10 +33,10 @@ export const SearchMedsTool = {
 			if (args.id) {
 				result = await retrievalService.getMedicineById(args.id);
 				if (!result) {
-					return `❌ Medicine with ID ${args.id} not found.`;
+					return `Medicine with ID ${args.id} not found.`;
 				}
 				return `
-					✅ Found medicine:
+					Found medicine:
 					Name: ${result.product_name}
 					Price: ₦${result.price}
 					Quantity: ${result.quantity}
@@ -49,11 +49,11 @@ export const SearchMedsTool = {
 			const searchResult = await retrievalService.searchMedicines(args.name, 5);
 			
 			if (searchResult.medicines.length === 0) {
-				return `⚠️  No medicines found for "${args.name}".`;
+				return `No medicines found for "${args.name}".`;
 			}
 
 			// Format results
-			let response = `✅ Found ${searchResult.medicines.length} medicine(s) for "${args.name}":\n\n`;
+			let response = `Found ${searchResult.medicines.length} medicine(s) for "${args.name}":\n\n`;
 			searchResult.medicines.forEach((med, index) => {
 				response += `${index + 1}. **${med.product_name}**
    Barcode: ${med.barcode}
