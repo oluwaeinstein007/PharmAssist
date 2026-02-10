@@ -1,0 +1,35 @@
+# Unified API Server Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install runtime utilities needed for healthchecks
+RUN apk add --no-cache wget curl ca-certificates
+
+# Configure npm for extended timeouts
+RUN npm config set fetch-timeout 120000 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-retry-maxtimeout 120000
+
+# Install pnpm
+RUN npm install -g pnpm@10.7.1
+
+# Copy workspace files
+COPY pnpm-lock.yaml package.json ./
+
+# Copy root config files
+COPY tsconfig.json ./
+
+# Install dependencies with extended timeout
+RUN pnpm install --config.fetch-timeout=120000
+
+# Copy source code after installing dependencies
+COPY src ./src
+
+# Expose port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD wget -qO- http://localhost:5000/api/v1/health || exit 1
+
+# Start the API server
+CMD ["sh", "-c", "API_PORT=5000 pnpm tsx src/api/index.ts"]
