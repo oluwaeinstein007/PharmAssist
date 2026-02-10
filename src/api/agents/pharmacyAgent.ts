@@ -3,69 +3,89 @@ import { getGeminiDeclarations, executeTool } from './toolRegistry.js';
 import {
   conversationStore,
   type ConversationMessage,
+  type SessionCartItem,
 } from '../sessions/conversationStore.js';
 import { ApiError, ErrorCode } from '../types/errors.js';
+import { getSystemPromptForRole, getAllowedToolsForRole } from '../rbac/roles.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.0-flash';
 const MAX_TOOL_ITERATIONS = 5;
 
-const SYSTEM_INSTRUCTION = `You are PharmAssist, a simple and helpful AI pharmacy assistant. Help customers find and order medicines easily.
+// System prompt is now role-dependent — see src/api/rbac/roles.ts
 
-CORE RESPONSIBILITIES:
-1. Search for medicines when users ask (use search_medicines)
-2. Display search results with barcode, price, and availability
-3. Create carts when users want to order (use create_cart)
-
-FRONTEND WORKFLOW - READ CAREFULLY:
-- The frontend will automatically extract barcodes from your search results
-- The frontend handles all product selection and quantity input
-- You ONLY need to: search, display results, and create carts
-- DO NOT ask users for barcodes - they're extracted automatically
-- DO NOT ask for quantity input - the frontend will ask
-- Just keep responses simple and helpful
-
-EXPECTED RESPONSE FORMAT FOR SEARCH:
-When you find medicines, format them EXACTLY like this:
-1. **Medicine Name**
-   Barcode: 1234567890
-   Price: ₦10.99
-   Available: 50 units
-   
-2. **Another Medicine**
-   Barcode: 0987654321
-   ...
-
-USER SCENARIOS:
-1. User: "Find paracetamol"
-   → Use search_medicines, show results with barcodes
-   → Frontend shows select buttons automatically
-   
-2. User: "I want 2 paracetamol"
-   → Use search_medicines to find paracetamol
-   → Frontend auto-detects "2" and asks for confirmation
-   
-3. User sends barcode + quantity directly
-   → Use create_cart to complete the order
-
-Be friendly, clear, and let the frontend handle the UI interactions.`;
+// ── Public types ────────────────────────────────────────────────────────────
 
 export interface AgentResult {
   response: string;
   conversationId: string;
   toolsUsed: string[];
+  /** Session snapshot for the client to cache (mobile restore) */
+  sessionState: {
+    turnCount: number;
+    cartItemCount: number;
+    pinnedFactCount: number;
+    hasSummary: boolean;
+  };
 }
 
 export interface StreamEvent {
-  type: 'token' | 'tool_call' | 'tool_result' | 'done' | 'error';
+  type: 'token' | 'tool_call' | 'tool_result' | 'context' | 'done' | 'error';
   data: Record<string, unknown>;
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function buildContextMessage(sessionId: string): string {
+  const { contextPreamble } = conversationStore.getContextWindow(sessionId);
+  if (!contextPreamble) return '';
+  return `[CONTEXT — do not repeat this to the user, use it to inform your responses]\n${contextPreamble}\n[END CONTEXT]\n\n`;
+}
+
+interface ToolCallRecord {
+  name: string;
+  args?: Record<string, unknown>;
+  result?: string;
+}
+
+function extractCartUpdates(toolCalls: ToolCallRecord[]): SessionCartItem[] {
+  const items: SessionCartItem[] = [];
+  for (const tc of toolCalls) {
+    if (tc.name === 'create_cart' && tc.result && tc.result.includes('successfully')) {
+      // Cart was created via the external API — we don't add to local cart
+      // (the frontend manages local cart state)
+    }
+  }
+  return items;
+}
+
+function extractPinnedFacts(
+  sessionId: string,
+  userMessage: string,
+  toolCalls: ToolCallRecord[],
+): void {
+  // Auto-pin user's stated conditions/symptoms
+  const symptomMatch = userMessage.match(/\b(?:i have|suffering from|diagnosed with)\s+(.+?)(?:\.|,|$)/i);
+  if (symptomMatch) {
+    conversationStore.pinFact(sessionId, 'user_condition', symptomMatch[1].trim());
+  }
+
+  // Auto-pin search results for reference
+  for (const tc of toolCalls) {
+    if (tc.name === 'search_medicines' && tc.result) {
+      // Store last search in the session (already done in addMessage via toolCalls)
+    }
+  }
+}
+
+// ── Non-streaming chat ──────────────────────────────────────────────────────
 
 export async function processChat(
   message: string,
   conversationId?: string,
   userId?: string,
   platform?: string,
+  role?: string,
 ): Promise<AgentResult> {
   if (!GEMINI_API_KEY) {
     throw new ApiError(ErrorCode.LLM_ERROR, 'GEMINI_API_KEY is not configured');
@@ -73,6 +93,7 @@ export async function processChat(
 
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const toolsUsed: string[] = [];
+  const allToolCalls: ToolCallRecord[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -80,14 +101,21 @@ export async function processChat(
     session = conversationStore.create(userId, platform);
   }
 
+  // Resolve role-scoped configuration
+  const userRole = role || 'customer';
+  const allowedTools = getAllowedToolsForRole(userRole);
+  const systemInstruction = getSystemPromptForRole(userRole);
+
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
-    tools: [{ functionDeclarations: getGeminiDeclarations() }],
-    systemInstruction: SYSTEM_INSTRUCTION,
+    tools: [{ functionDeclarations: getGeminiDeclarations(allowedTools) }],
+    systemInstruction,
   });
 
-  // Build history from conversation store
-  const history = session.history.map((msg) => ({
+  // Get context-windowed history (not the full raw history)
+  const { contextPreamble, recentHistory } = conversationStore.getContextWindow(session.id);
+
+  const history = recentHistory.map((msg) => ({
     role: msg.role,
     parts: msg.parts,
   }));
@@ -100,8 +128,12 @@ export async function processChat(
     parts: [{ text: message }],
   });
 
+  // Prepend context preamble to the user message so the model sees it
+  const contextBlock = buildContextMessage(session.id);
+  const enrichedMessage = contextBlock ? `${contextBlock}${message}` : message;
+
   // Send message and enter tool-calling loop
-  let response = await chat.sendMessage(message);
+  let response = await chat.sendMessage(enrichedMessage);
   let result = response.response;
   let iterations = 0;
 
@@ -123,7 +155,14 @@ export async function processChat(
       const toolResult = await executeTool(
         call.name,
         (call.args as Record<string, unknown>) || {},
+        allowedTools,
       );
+
+      allToolCalls.push({
+        name: call.name,
+        args: call.args as Record<string, unknown>,
+        result: toolResult,
+      });
 
       functionResponses.push({
         functionResponse: {
@@ -143,24 +182,40 @@ export async function processChat(
       ? text
       : 'I apologize, but I could not generate a response. Please try rephrasing your question.';
 
-  // Save assistant response to history
+  // Save assistant response with tool call metadata
   conversationStore.addMessage(session.id, {
     role: 'model',
     parts: [{ text: finalResponse }],
+    toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
   });
+
+  // Auto-extract pinned facts from this turn
+  extractPinnedFacts(session.id, message, allToolCalls);
+
+  // Refresh session reference (summarization may have mutated it)
+  session = conversationStore.get(session.id)!;
 
   return {
     response: finalResponse,
     conversationId: session.id,
     toolsUsed: [...new Set(toolsUsed)],
+    sessionState: {
+      turnCount: session.turnCount,
+      cartItemCount: session.cart.length,
+      pinnedFactCount: session.pinnedFacts.length,
+      hasSummary: !!session.contextSummary,
+    },
   };
 }
+
+// ── Streaming chat ──────────────────────────────────────────────────────────
 
 export async function* processChatStream(
   message: string,
   conversationId?: string,
   userId?: string,
   platform?: string,
+  role?: string,
 ): AsyncGenerator<StreamEvent> {
   if (!GEMINI_API_KEY) {
     yield { type: 'error', data: { message: 'GEMINI_API_KEY is not configured' } };
@@ -169,6 +224,7 @@ export async function* processChatStream(
 
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const toolsUsed: string[] = [];
+  const allToolCalls: ToolCallRecord[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -176,13 +232,20 @@ export async function* processChatStream(
     session = conversationStore.create(userId, platform);
   }
 
+  // Resolve role-scoped configuration
+  const userRole = role || 'customer';
+  const allowedTools = getAllowedToolsForRole(userRole);
+  const systemInstruction = getSystemPromptForRole(userRole);
+
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
-    tools: [{ functionDeclarations: getGeminiDeclarations() }],
-    systemInstruction: SYSTEM_INSTRUCTION,
+    tools: [{ functionDeclarations: getGeminiDeclarations(allowedTools) }],
+    systemInstruction,
   });
 
-  const history = session.history.map((msg) => ({
+  const { contextPreamble, recentHistory } = conversationStore.getContextWindow(session.id);
+
+  const history = recentHistory.map((msg) => ({
     role: msg.role,
     parts: msg.parts,
   }));
@@ -194,9 +257,24 @@ export async function* processChatStream(
     parts: [{ text: message }],
   });
 
+  // Emit context event so the client knows what state the server has
+  if (contextPreamble) {
+    yield {
+      type: 'context',
+      data: {
+        summary: session.contextSummary || null,
+        cartItemCount: session.cart.length,
+        pinnedFacts: session.pinnedFacts.map((f) => ({ key: f.key, value: f.value })),
+        turnCount: session.turnCount,
+      },
+    };
+  }
+
+  const contextBlock = buildContextMessage(session.id);
+  const enrichedMessage = contextBlock ? `${contextBlock}${message}` : message;
+
   try {
-    // Use streaming for the initial message
-    const streamResult = await chat.sendMessageStream(message);
+    const streamResult = await chat.sendMessageStream(enrichedMessage);
     let fullText = '';
     let pendingFunctionCalls: any[] = [];
 
@@ -207,14 +285,13 @@ export async function* processChatStream(
         yield { type: 'token', data: { text: chunkText } };
       }
 
-      // Check for function calls in this chunk
       const calls = chunk.functionCalls();
       if (calls && calls.length > 0) {
         pendingFunctionCalls.push(...calls);
       }
     }
 
-    // Handle tool calls if any
+    // Handle tool calls
     let iterations = 0;
     while (pendingFunctionCalls.length > 0 && iterations < MAX_TOOL_ITERATIONS) {
       iterations++;
@@ -229,7 +306,14 @@ export async function* processChatStream(
         const toolResult = await executeTool(
           call.name,
           (call.args as Record<string, unknown>) || {},
+          allowedTools,
         );
+
+        allToolCalls.push({
+          name: call.name,
+          args: call.args as Record<string, unknown>,
+          result: toolResult,
+        });
 
         yield { type: 'tool_result', data: { tool: call.name, result: toolResult.substring(0, 500) } };
 
@@ -243,7 +327,6 @@ export async function* processChatStream(
 
       pendingFunctionCalls = [];
 
-      // Send tool results back and stream the response
       const followUpStream = await chat.sendMessageStream(functionResponses);
       for await (const chunk of followUpStream.stream) {
         const chunkText = chunk.text();
@@ -259,24 +342,37 @@ export async function* processChatStream(
       }
     }
 
-    // Save to history
+    // Save to history with tool metadata
     if (fullText.trim()) {
       conversationStore.addMessage(session.id, {
         role: 'model',
         parts: [{ text: fullText }],
+        toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
       });
     }
+
+    // Auto-extract pinned facts
+    extractPinnedFacts(session.id, message, allToolCalls);
+
+    // Refresh session
+    session = conversationStore.get(session.id)!;
 
     yield {
       type: 'done',
       data: {
         conversationId: session.id,
         toolsUsed: [...new Set(toolsUsed)],
+        sessionState: {
+          turnCount: session.turnCount,
+          cartItemCount: session.cart.length,
+          pinnedFactCount: session.pinnedFacts.length,
+          hasSummary: !!session.contextSummary,
+        },
       },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[PharmacyAgent] Stream error:', message);
-    yield { type: 'error', data: { message } };
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[PharmacyAgent] Stream error:', errMsg);
+    yield { type: 'error', data: { message: errMsg } };
   }
 }

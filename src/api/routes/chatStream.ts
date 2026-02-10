@@ -35,6 +35,7 @@ chatStream.post('/', async (c) => {
       conversationId,
       auth?.userId,
       platform,
+      auth?.role,
     );
 
     for await (const event of generator) {

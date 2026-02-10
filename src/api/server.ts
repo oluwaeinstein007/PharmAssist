@@ -5,6 +5,7 @@ import { requestLogger } from './middleware/logger.js';
 import { authMiddleware } from './middleware/auth.js';
 import { chatRateLimiter, searchRateLimiter, globalRateLimiter } from './middleware/rateLimiter.js';
 import { handleError } from './middleware/errorHandler.js';
+import { requireRole } from './rbac/requireRole.js';
 
 import healthRoutes from './routes/health.js';
 import searchRoutes from './routes/search.js';
@@ -14,6 +15,7 @@ import alternativesRoutes from './routes/alternatives.js';
 import medicineRoutes from './routes/medicine.js';
 import chatRoutes from './routes/chat.js';
 import chatStreamRoutes from './routes/chatStream.js';
+import sessionRoutes from './routes/sessions.js';
 
 // ── Hono environment type (shared across all routes) ────────────────────────
 
@@ -53,6 +55,12 @@ export function createApp(): Hono<AppEnv> {
   app.use('/api/v1/search/*', searchRateLimiter);
   app.use('/api/v1/search', searchRateLimiter);
   app.route('/api/v1/search', searchRoutes);
+
+  // Session management routes (all authenticated roles can manage their own sessions)
+  app.route('/api/v1/sessions', sessionRoutes);
+
+  // Admin-only routes (future: analytics, system config, cross-user session monitoring)
+  app.use('/api/v1/admin/*', requireRole('admin'));
 
   // Direct service routes
   app.route('/api/v1/stock', stockRoutes);

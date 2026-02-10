@@ -60,10 +60,10 @@ const searchMedicinesTool: ToolDefinition = {
     const searchResult = await retrieval.searchMedicines(query, 5);
 
     if (searchResult.medicines.length === 0) {
-      return `⚠️ No medicines found for "${query}".`;
+      return `No medicines found for "${query}".`;
     }
 
-    let response = `✅ Found ${searchResult.medicines.length} medicine(s) for "${query}":\n\n`;
+    let response = `Found ${searchResult.medicines.length} medicine(s) for "${query}":\n\n`;
     searchResult.medicines.forEach((med, index) => {
       response += `${index + 1}. **${med.product_name}**\n   Barcode: ${med.barcode}\n   Price: ₦${med.price}\n   Available: ${med.quantity} units\n   Category: ${med.category_name}\n   Match Score: ${(med.score * 100).toFixed(1)}%\n`;
     });
@@ -96,11 +96,11 @@ const checkStockTool: ToolDefinition = {
     });
 
     if (!result.success) {
-      return `❌ Failed to check stock: ${result.error}`;
+      return `Failed to check stock: ${result.error}`;
     }
 
     const { data } = result;
-    return `✅ Stock Check Result for Barcode: ${data?.barcode}\n\n**Product:** ${data?.product_name}\n**Category:** ${data?.category_name}\n**Price:** ₦${data?.price}\n**Available Quantity:** ${data?.quantity} units\n\n${data?.quantity && data.quantity > 0 ? '✨ In stock and ready to order!' : '⚠️ Out of stock'}`;
+    return `Stock Check Result for Barcode: ${data?.barcode}\n\n**Product:** ${data?.product_name}\n**Category:** ${data?.category_name}\n**Price:** ₦${data?.price}\n**Available Quantity:** ${data?.quantity} units\n\n${data?.quantity && data.quantity > 0 ? 'In stock and ready to order!' : 'Out of stock'}`;
   },
 };
 
@@ -131,7 +131,7 @@ const findAlternativesTool: ToolDefinition = {
       quantity: Number(args.quantity) || 1,
       total_price: Number(args.total_price) || 0,
     });
-    return `✅ Alternatives search initiated: ${result}`;
+    return `Alternatives search initiated: ${result}`;
   },
 };
 
@@ -156,9 +156,9 @@ const getMedicineDetailsTool: ToolDefinition = {
     const retrieval = await getRetrievalService();
     const med = await retrieval.getMedicineById(String(args.medicine_id || ''));
     if (!med) {
-      return `⚠️ Medicine with ID ${args.medicine_id} not found.`;
+      return `Medicine with ID ${args.medicine_id} not found.`;
     }
-    return `✅ Medicine Details:\n\nName: ${med.product_name}\nBarcode: ${med.barcode}\nPrice: ₦${med.price}\nAvailable: ${med.quantity} units\nCategory: ${med.category_name}`;
+    return `Medicine Details:\n\nName: ${med.product_name}\nBarcode: ${med.barcode}\nPrice: ₦${med.price}\nAvailable: ${med.quantity} units\nCategory: ${med.category_name}`;
   },
 };
 
@@ -203,9 +203,9 @@ const createCartTool: ToolDefinition = {
     const result = await service.createCart(cartItems);
 
     if (result.success) {
-      let response = `✅ Cart created successfully!\nCart ID: ${result.cartId}`;
+      let response = `Cart created successfully!\nCart ID: ${result.cartId}`;
       if (result.cartUrl) {
-        response += `\n\n🛒 Complete your transaction here: ${result.cartUrl}`;
+        response += `\n\nComplete your transaction here: ${result.cartUrl}`;
       }
       return response;
     }
@@ -256,7 +256,7 @@ const logPurchaseTool: ToolDefinition = {
       quantity: Number(args.quantity) || 1,
       total_price: Number(args.total_price) || 0,
     });
-    return `✅ Purchase logged: ${logId}`;
+    return `Purchase logged: ${logId}`;
   },
 };
 
@@ -297,7 +297,7 @@ const notifyAdminTool: ToolDefinition = {
       reason: String(args.reason || ''),
       priority: String(args.priority || 'medium'),
     });
-    return `✅ Admin notified: ${notifId}`;
+    return `Admin notified: ${notifId}`;
   },
 };
 
@@ -317,14 +317,27 @@ export const toolMap = new Map<string, ToolDefinition>(
   toolRegistry.map((t) => [t.name, t])
 );
 
-export function getGeminiDeclarations(): FunctionDeclaration[] {
-  return toolRegistry.map((t) => t.geminiDeclaration);
+export function getGeminiDeclarations(allowedTools?: string[]): FunctionDeclaration[] {
+  if (!allowedTools) return toolRegistry.map((t) => t.geminiDeclaration);
+  return toolRegistry
+    .filter((t) => allowedTools.includes(t.name))
+    .map((t) => t.geminiDeclaration);
 }
 
-export async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+export async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  allowedTools?: string[],
+): Promise<string> {
+  // Role-based tool gating: reject if tool is not in the allowed list
+  if (allowedTools && !allowedTools.includes(name)) {
+    console.warn(`[ToolRegistry] Tool ${name} blocked by role policy`);
+    return `Tool ${name} is not available for your account role.`;
+  }
+
   const tool = toolMap.get(name);
   if (!tool) {
-    return `❌ Unknown tool: ${name}`;
+    return `Unknown tool: ${name}`;
   }
 
   try {
@@ -335,6 +348,6 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[ToolRegistry] ${name} failed:`, message);
-    return `❌ Tool ${name} failed: ${message}`;
+    return `Tool ${name} failed: ${message}`;
   }
 }

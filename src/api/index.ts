@@ -30,13 +30,13 @@ if (isBun && Bun) {
     hostname: host,
     fetch: app.fetch,
   });
-  console.log(`🚀 Running on ${runtime} ${Bun.version}`);
-  console.log(`📡 API server listening on http://${host}:${server.port}`);
+  console.log(`Running on ${runtime} ${Bun.version}`);
+  console.log(`API server listening on http://${host}:${server.port}`);
 } else {
   // Node.js via @hono/node-server
   serve({ fetch: app.fetch, port, hostname: host }, (info) => {
-    console.log(`🚀 Running on ${runtime} ${process.version}`);
-    console.log(`📡 API server listening on http://${host}:${info.port}`);
+    console.log(`Running on ${runtime} ${process.version}`);
+    console.log(`API server listening on http://${host}:${info.port}`);
   });
 }
 

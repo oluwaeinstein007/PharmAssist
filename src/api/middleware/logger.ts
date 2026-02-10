@@ -15,7 +15,7 @@ export const requestLogger = createMiddleware(async (c, next) => {
 
   const duration = Date.now() - start;
   const status = c.res.status;
-  const level = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
+  const level = status >= 500 ? 'ERR' : status >= 400 ? 'WARN' : 'OK';
 
   console.log(`[API] ${level} ${method} ${path} ${status} ${duration}ms (${requestId})`);
 });

@@ -54,14 +54,14 @@ export class UnifiedProductsService {
    */
   async getAllProducts(maxProducts: number = 0): Promise<UnifiedProduct[]> {
     try {
-      console.log(`📥 Fetching all products from API with pagination${maxProducts > 0 ? ` (max: ${maxProducts})` : ''}`);
+      console.log(`Fetching all products from API with pagination${maxProducts > 0 ? ` (max: ${maxProducts})` : ''}`);
       const allProducts: UnifiedProduct[] = [];
       let currentPage = 1;
       let hasNextPage = true;
 
       while (hasNextPage && (maxProducts === 0 || allProducts.length < maxProducts)) {
         const url = `${this.apiBaseUrl}/products/unified?page=${currentPage}`;
-        console.log(`🔍 Fetching page ${currentPage}: ${url}`);
+        console.log(`Fetching page ${currentPage}: ${url}`);
         console.log(`   Token: ${this.apiToken ? 'set (' + this.apiToken.substring(0, 20) + '...)' : 'NOT SET'}`);
 
         try {
@@ -80,7 +80,7 @@ export class UnifiedProductsService {
 
           // Products are nested in response.data.data
           const pageProducts = response.data.data.data;
-          console.log(`✅ Page ${currentPage}: Retrieved ${pageProducts.length} products (Total so far: ${allProducts.length + pageProducts.length})`);
+          console.log(`Page ${currentPage}: Retrieved ${pageProducts.length} products (Total so far: ${allProducts.length + pageProducts.length})`);
 
           // Add products, but respect maxProducts limit
           if (maxProducts > 0) {
@@ -92,7 +92,7 @@ export class UnifiedProductsService {
 
           // Check if we've reached our limit or if there's no next page
           if (maxProducts > 0 && allProducts.length >= maxProducts) {
-            console.log(`📌 Reached product limit of ${maxProducts}. Stopping pagination.`);
+            console.log(`Reached product limit of ${maxProducts}. Stopping pagination.`);
             hasNextPage = false;
           } else {
             hasNextPage = response.data.data.next_page_url !== null;
@@ -116,18 +116,18 @@ export class UnifiedProductsService {
           } else {
             errorMessage = JSON.stringify(pageError).substring(0, 200);
           }
-          console.warn(`⚠️  Error fetching page ${currentPage}: ${errorMessage}. Stopping pagination.`);
+          console.warn(`Error fetching page ${currentPage}: ${errorMessage}. Stopping pagination.`);
           console.warn(`   Error stack: ${pageError.stack || 'no stack'}`);
           // Stop pagination if we hit an error (e.g., API failure on later pages)
           hasNextPage = false;
         }
       }
 
-      console.log(`✅ Successfully fetched ${allProducts.length} products from ${currentPage} page(s)`);
+      console.log(`Successfully fetched ${allProducts.length} products from ${currentPage} page(s)`);
       return allProducts;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`❌ Error fetching all products: ${message}`);
+      console.error(`Error fetching all products: ${message}`);
       throw error;
     }
   }
@@ -140,7 +140,7 @@ export class UnifiedProductsService {
   async getProducts(page: number = 1): Promise<PaginatedResponse> {
     try {
       const url = `${this.apiBaseUrl}/products/unified?page=${page}`;
-      console.log(`🔍 Fetching products from API: ${url}`);
+      console.log(`Fetching products from API: ${url}`);
 
       const response = await axios.get<PaginatedResponse>(url, {
         headers: {
@@ -154,11 +154,11 @@ export class UnifiedProductsService {
         throw new Error(`API returned unsuccessful status: ${response.data.message}`);
       }
 
-      console.log(`✅ Page ${page} fetched successfully with ${response.data.data.data.length} products`);
+      console.log(`Page ${page} fetched successfully with ${response.data.data.data.length} products`);
       return response.data;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`❌ Error fetching products: ${message}`);
+      console.error(`Error fetching products: ${message}`);
       throw error;
     }
   }
@@ -170,7 +170,7 @@ export class UnifiedProductsService {
    */
   async searchProduct(query: string): Promise<UnifiedProduct> {
     try {
-      console.log(`🔍 Searching for product: ${query}`);
+      console.log(`Searching for product: ${query}`);
 
       // Fetch all products and filter by name
       const allProducts = await this.getAllProducts();
@@ -182,11 +182,11 @@ export class UnifiedProductsService {
         throw new Error(`Product not found for query: ${query}`);
       }
 
-      console.log(`✅ Product found: ${product.product_name}`);
+      console.log(`Product found: ${product.product_name}`);
       return product;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`❌ Error searching product for query ${query}: ${message}`);
+      console.error(`Error searching product for query ${query}: ${message}`);
       throw error;
     }
   }

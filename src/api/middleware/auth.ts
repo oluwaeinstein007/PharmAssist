@@ -1,6 +1,16 @@
 import { createMiddleware } from 'hono/factory';
 import { jwtVerify, type JWTPayload } from 'jose';
 import { ApiError, ErrorCode } from '../types/errors.js';
+import type { UserRole } from '../rbac/roles.js';
+
+const VALID_ROLES: UserRole[] = ['customer', 'pharmacist', 'admin'];
+
+function normalizeRole(raw?: string): UserRole {
+  const r = (raw || 'customer').toLowerCase();
+  // Map legacy 'user' role to 'customer'
+  if (r === 'user') return 'customer';
+  return VALID_ROLES.includes(r as UserRole) ? (r as UserRole) : 'customer';
+}
 
 const API_KEYS = new Set(
   (process.env.API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean)
@@ -18,7 +28,9 @@ export interface AuthPayload {
 export const authMiddleware = createMiddleware(async (c, next) => {
   // Skip auth if disabled (development mode)
   if (!AUTH_ENABLED) {
-    c.set('auth', { userId: 'anonymous', role: 'user', platform: 'dev' } satisfies AuthPayload);
+    // In dev mode, allow X-Role header to test different roles
+    const devRole = normalizeRole(c.req.header('X-Role') || 'customer');
+    c.set('auth', { userId: 'anonymous', role: devRole, platform: 'dev' } satisfies AuthPayload);
     return next();
   }
 
@@ -27,11 +39,14 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   if (apiKey) {
     if (API_KEYS.size === 0) {
       // No API keys configured — allow any key in dev-like setups
-      c.set('auth', { userId: 'api-key-user', role: 'user', platform: 'api' } satisfies AuthPayload);
+      const headerRole = normalizeRole(c.req.header('X-Role'));
+      c.set('auth', { userId: 'api-key-user', role: headerRole, platform: 'api' } satisfies AuthPayload);
       return next();
     }
     if (API_KEYS.has(apiKey)) {
-      c.set('auth', { userId: 'api-key-user', role: 'user', platform: 'api' } satisfies AuthPayload);
+      // API key users can specify role via X-Role header (validated by JWT in production)
+      const headerRole = normalizeRole(c.req.header('X-Role'));
+      c.set('auth', { userId: 'api-key-user', role: headerRole, platform: 'api' } satisfies AuthPayload);
       return next();
     }
     throw new ApiError(ErrorCode.UNAUTHORIZED, 'Invalid API key');
@@ -52,7 +67,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
       c.set('auth', {
         userId: payload.userId || payload.sub || 'jwt-user',
-        role: payload.role || 'user',
+        role: normalizeRole(payload.role),
         platform: c.req.header('X-Platform') || 'unknown',
       } satisfies AuthPayload);
 

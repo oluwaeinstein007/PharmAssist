@@ -33,6 +33,7 @@ chat.post('/', async (c) => {
     conversationId,
     auth?.userId,
     platform,
+    auth?.role,
   );
 
   // Set conversation ID header for mobile clients
@@ -44,6 +45,7 @@ chat.post('/', async (c) => {
       response: result.response,
       conversationId: result.conversationId,
       toolsUsed: result.toolsUsed,
+      sessionState: result.sessionState,
     },
     meta: {
       requestId: c.get('requestId') || 'unknown',
