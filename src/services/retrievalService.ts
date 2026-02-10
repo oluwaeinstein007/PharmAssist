@@ -238,7 +238,7 @@ export class RetrievalService {
    * Used when we need to retrieve results without a specific query embedding
    */
   private generateDummyVector(): number[] {
-    const vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '1536', 10);
+    const vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
     return Array(vectorSize).fill(0);
   }
 }
