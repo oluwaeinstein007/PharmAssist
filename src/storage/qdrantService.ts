@@ -18,7 +18,7 @@ export class QdrantService {
       // Provide defaults so rest of service can be constructed
       this.client = {} as any;
       this.collectionName = 'documents';
-      this.vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '1536', 10);
+      this.vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
       return;
     }
 
@@ -38,8 +38,8 @@ export class QdrantService {
     // Default collection name and vector size
     this.collectionName = 'pharm_product_cluster'; // Default collection name
     // Allow embedding dimension to be configured via env, otherwise default to 1536
-    const envVec = process.env.EMBEDDING_VECTOR_SIZE || '1536';
-    this.vectorSize = envVec ? parseInt(envVec, 10) : 1536;
+    const envVec = process.env.EMBEDDING_VECTOR_SIZE || '3072';
+    this.vectorSize = envVec ? parseInt(envVec, 10) : 3072;
   }
 
   async initialize(): Promise<void> {

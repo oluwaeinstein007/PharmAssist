@@ -6,7 +6,7 @@ export class EmbeddingService {
   private googleClient?: GoogleGenAI;
   private provider: 'anthropic' | 'google' | 'none';
   private embeddingModel: string = 'gemini-embedding-001';
-  private embeddingDimensions: number = 768;
+  private embeddingDimensions: number = 3072;
 
   constructor() {
     const provider = process.env.EMBEDDING_PROVIDER || 'anthropic';
@@ -20,7 +20,7 @@ export class EmbeddingService {
         this.anthropicClient = new Anthropic({ apiKey });
       }
       this.embeddingModel = process.env.ANTHROPIC_EMBEDDING_MODEL || 'text-embedding-3-small';
-      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '768', 10);
+      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
     } else if (this.provider === 'google') {
       const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -29,7 +29,7 @@ export class EmbeddingService {
         this.googleClient = new GoogleGenAI({ apiKey });
       }
       this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'gemini-embedding-001';
-      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '768', 10);
+      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
     }
 
     console.log(`Embedding service initialized with provider: ${this.provider}`);
@@ -87,7 +87,6 @@ export class EmbeddingService {
       const result = await this.googleClient.models.embedContent({
         model: this.embeddingModel,
         contents: text,
-        config: { outputDimensionality: this.embeddingDimensions },
       });
 
       const embedding = result.embeddings?.[0]?.values;
@@ -110,7 +109,7 @@ export class EmbeddingService {
    * Useful for testing without API calls
    */
   private generateDummyEmbedding(text: string): number[] {
-    const vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '1536', 10);
+    const vectorSize = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
     const hash = this.hashString(text);
     
     const embedding: number[] = [];
