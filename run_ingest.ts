@@ -45,7 +45,7 @@ async function main() {
     await ingestorService.initialize();
     
     // Ingest all products without limit (0 = unlimited)
-    const result = await ingestorService.ingestAllProducts(0);
+    const result = await ingestorService.ingestAllProducts(1000);
     
     // Print results
     console.log('\n' + '='.repeat(60));
