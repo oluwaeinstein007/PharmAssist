@@ -12,10 +12,11 @@ services:
       - NODE_ENV=production
       # Add your environment variables here from .env
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
-      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-001}
       - EMBEDDING_VECTOR_SIZE=${EMBEDDING_VECTOR_SIZE:-768}
       - QDRANT_HOST=${QDRANT_HOST}
       - QDRANT_KEY=${QDRANT_KEY}
+      - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-pharm_assist_cluster}
       - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
       - CART_BASE_URL=${CART_BASE_URL}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -48,7 +49,7 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://mcp-backend:4000}
       # Frontend environment variables
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
-      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-001}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
       - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://mcp-backend:4000/mcp}
       - MCP_URL=${MCP_URL:-http://mcp-backend:4000/mcp}
@@ -59,6 +60,43 @@ services:
     restart: unless-stopped
     networks:
       - pharmassist-network
+
+  # Unified API Server (Hono — mobile/frontend-ready)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: pharmassist-api
+    ports:
+      - "5000:5000"
+    environment:
+      - API_PORT=5000
+      - NODE_ENV=production
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - API_KEYS=${API_KEYS:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-001}
+      - EMBEDDING_VECTOR_SIZE=${EMBEDDING_VECTOR_SIZE:-768}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_KEY=${QDRANT_KEY}
+      - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-pharm_assist_cluster}
+      - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
+      - CART_BASE_URL=${CART_BASE_URL}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
+      - BEARER_TOKEN=${BEARER_TOKEN}
+    restart: unless-stopped
+    networks:
+      - pharmassist-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 networks:
   pharmassist-network:

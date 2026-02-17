@@ -45,7 +45,7 @@ export const LogPurchaseTool = {
                 total_price: args.total_price
             });
             return `
-            ✅ Successfully searched medicines with name ${args.medicine_name}.
+            Successfully searched medicines with name ${args.medicine_name}.
             Log Meds: ${medsList}
             `;
         } catch (error: unknown) {

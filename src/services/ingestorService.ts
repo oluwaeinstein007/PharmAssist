@@ -32,13 +32,13 @@ export class IngestorService {
    * Initialize the ingestor service and Qdrant connection
    */
   async initialize(): Promise<void> {
-    console.log('🚀 Initializing IngestorService...');
+    console.log('Initializing IngestorService...');
     try {
       await this.qdrantService.initialize();
-      console.log('✅ IngestorService initialized successfully');
+      console.log('IngestorService initialized successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Failed to initialize IngestorService: ${message}`);
+      console.error(`Failed to initialize IngestorService: ${message}`);
       throw error;
     }
   }
@@ -50,11 +50,11 @@ export class IngestorService {
    */
   async ingestAllProducts(maxProducts: number = 5): Promise<BatchIngestResult> {
     try {
-      console.log(`📥 Starting batch ingestion for all products from API (max: ${maxProducts})`);
+      console.log(`Starting batch ingestion for all products from API (max: ${maxProducts})`);
 
       // Step 1: Fetch all products from the API with pagination
       const allProducts = await this.productsService.getAllProducts(maxProducts);
-      console.log(`✅ Fetched ${allProducts.length} products from API`);
+      console.log(`Fetched ${allProducts.length} products from API`);
 
       if (allProducts.length === 0) {
         return {
@@ -74,7 +74,7 @@ export class IngestorService {
       for (let i = 0; i < allProducts.length; i++) {
         const product = allProducts[i];
         try {
-          console.log(`⏳ Ingesting product ${i + 1}/${allProducts.length}: ${product.product_name}`);
+          console.log(`Ingesting product ${i + 1}/${allProducts.length}: ${product.product_name}`);
 
           // Format product data and generate embedding
           const productText = this.productsService.formatProductForEmbedding(product);
@@ -100,7 +100,7 @@ export class IngestorService {
           console.log(`  Payload for ${product.product_name}: barcode=${payload.barcode}, price=${payload.price}, qty=${payload.quantity}`);
 
           await this.qdrantService.addChunk(String(timestampId), embedding, payload);
-          console.log(`✅ Product ${i + 1}/${allProducts.length} stored in Qdrant: ${product.product_name}`);
+          console.log(`Product ${i + 1}/${allProducts.length} stored in Qdrant: ${product.product_name}`);
 
           results.push({
             id: String(timestampId),
@@ -117,7 +117,7 @@ export class IngestorService {
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`❌ Error ingesting ${product.product_name}: ${message}`);
+          console.error(`Error ingesting ${product.product_name}: ${message}`);
 
           results.push({
             id: `unknown_${Date.now()}`,
@@ -130,7 +130,7 @@ export class IngestorService {
         }
       }
 
-      console.log(`\n📊 Batch ingestion completed: ${successCount}/${allProducts.length} successful`);
+      console.log(`\nBatch ingestion completed: ${successCount}/${allProducts.length} successful`);
 
       return {
         totalProducts: allProducts.length,
@@ -141,7 +141,7 @@ export class IngestorService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Error in batch ingestion: ${message}`);
+      console.error(`Error in batch ingestion: ${message}`);
       return {
         totalProducts: 0,
         successful: 0,
@@ -159,16 +159,16 @@ export class IngestorService {
    */
   async ingestProductByQuery(query: string): Promise<IngestResult> {
     try {
-      console.log(`📥 Starting ingestion for query: ${query}`);
+      console.log(`Starting ingestion for query: ${query}`);
 
       // Step 1: Search for product
       const product = await this.productsService.searchProduct(query);
-      console.log(`✅ Product found: ${product.product_name}`);
+      console.log(`Product found: ${product.product_name}`);
 
       // Step 2: Format product data and generate embedding
       const productText = this.productsService.formatProductForEmbedding(product);
       const embedding = await this.embeddingService.generateEmbedding(productText);
-      console.log(`✅ Embedding generated for ${product.product_name}`);
+      console.log(`Embedding generated for ${product.product_name}`);
 
       // Step 3: Store in Qdrant
       const id = `${product.product_name}_${Date.now()}`;
@@ -184,7 +184,7 @@ export class IngestorService {
       };
 
       await this.qdrantService.addChunk(id, embedding, payload);
-      console.log(`✅ Product stored in Qdrant: ${id}`);
+      console.log(`Product stored in Qdrant: ${id}`);
 
       return {
         id,
@@ -194,7 +194,7 @@ export class IngestorService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Error ingesting product by query: ${message}`);
+      console.error(`Error ingesting product by query: ${message}`);
       return {
         id: `unknown_${Date.now()}`,
         productName: 'Unknown',

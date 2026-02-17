@@ -24,21 +24,21 @@ export const CheckStockTool = {
 
 			if (!result.success) {
 				return `
-❌ Failed to check stock for barcode ${args.medicine_barcode}.
+Failed to check stock for barcode ${args.medicine_barcode}.
 Error: ${result.error}
 				`.trim();
 			}
 
 			const { data } = result;
 			return `
-✅ Stock Check Result for Barcode: ${data?.barcode}
+Stock Check Result for Barcode: ${data?.barcode}
 
 **Product:** ${data?.product_name}
 **Category:** ${data?.category_name}
 **Price:** ₦${data?.price}
 **Available Quantity:** ${data?.quantity} units
 
-${data?.quantity && data.quantity > 0 ? '✨ In stock and ready to order!' : '⚠️ Out of stock'}
+${data?.quantity && data.quantity > 0 ? 'In stock and ready to order!' : 'Out of stock'}
 			`.trim();
 		} catch (error: unknown) {
 			const message =
