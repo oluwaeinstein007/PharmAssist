@@ -65,7 +65,8 @@ const searchMedicinesTool: ToolDefinition = {
 
     let response = `Found ${searchResult.medicines.length} medicine(s) for "${query}":\n\n`;
     searchResult.medicines.forEach((med, index) => {
-      response += `${index + 1}. **${med.product_name}**\n   Barcode: ${med.barcode}\n   Price: ₦${med.price}\n   Available: ${med.quantity} units\n   Category: ${med.category_name}\n   Match Score: ${(med.score * 100).toFixed(1)}%\n`;
+      const inStock = med.quantity && med.quantity > 0 ? 'In Stock' : 'Out of Stock';
+      response += `${index + 1}. **${med.product_name}**\n   Price: ₦${med.price}\n   Status: ${inStock}\n   Category: ${med.category_name}\n   Match Score: ${(med.score * 100).toFixed(1)}%\n`;
     });
     response += `\nSearch completed in ${searchResult.executionTime}ms`;
     return response;
@@ -100,7 +101,8 @@ const checkStockTool: ToolDefinition = {
     }
 
     const { data } = result;
-    return `Stock Check Result for Barcode: ${data?.barcode}\n\n**Product:** ${data?.product_name}\n**Category:** ${data?.category_name}\n**Price:** ₦${data?.price}\n**Available Quantity:** ${data?.quantity} units\n\n${data?.quantity && data.quantity > 0 ? 'In stock and ready to order!' : 'Out of stock'}`;
+    const inStock = data?.quantity && data.quantity > 0;
+    return `Stock Check Result:\n\n**Product:** ${data?.product_name}\n**Category:** ${data?.category_name}\n**Price:** ₦${data?.price}\n**Status:** ${inStock ? 'In stock and ready to order!' : 'Out of stock'}`;
   },
 };
 
@@ -158,7 +160,8 @@ const getMedicineDetailsTool: ToolDefinition = {
     if (!med) {
       return `Medicine with ID ${args.medicine_id} not found.`;
     }
-    return `Medicine Details:\n\nName: ${med.product_name}\nBarcode: ${med.barcode}\nPrice: ₦${med.price}\nAvailable: ${med.quantity} units\nCategory: ${med.category_name}`;
+    const inStock = med.quantity && med.quantity > 0 ? 'In Stock' : 'Out of Stock';
+    return `Medicine Details:\n\nName: ${med.product_name}\nPrice: ₦${med.price}\nStatus: ${inStock}\nCategory: ${med.category_name}`;
   },
 };
 
