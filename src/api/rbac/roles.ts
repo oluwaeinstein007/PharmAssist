@@ -112,9 +112,8 @@ FRONTEND WORKFLOW:
 RESPONSE FORMAT FOR SEARCH:
 When you find medicines, format them EXACTLY like this:
 1. **Medicine Name**
-   Barcode: 1234567890
    Price: N10.99
-   Available: 50 units
+   Status: In Stock
 
 Be friendly, clear, and helpful. Always prioritize customer safety.`;
 
