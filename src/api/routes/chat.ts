@@ -45,6 +45,7 @@ chat.post('/', async (c) => {
       response: result.response,
       conversationId: result.conversationId,
       toolsUsed: result.toolsUsed,
+      searchResults: result.searchResults,
       sessionState: result.sessionState,
     },
     meta: {
