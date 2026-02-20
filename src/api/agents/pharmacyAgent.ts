@@ -150,19 +150,17 @@ export async function processChat(
         result: toolResult,
       });
 
-      // Sync session cart when CREATE_CART succeeds
+      // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
       if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
         const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
         const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
-        for (const item of itemsArray) {
-          conversationStore.addCartItem(session.id, {
-            barcode: item.barcode,
-            name: item.name || item.barcode,
-            price: item.price || 0,
-            quantity: Number(item.qty) || 1,
-            addedAt: Date.now(),
-          });
-        }
+        conversationStore.updateCart(session.id, itemsArray.map(item => ({
+          barcode: item.barcode,
+          name: item.name || item.barcode,
+          price: item.price || 0,
+          quantity: Number(item.qty) || 1,
+          addedAt: Date.now(),
+        })));
       }
 
       functionResponses.push({
@@ -318,19 +316,17 @@ export async function* processChatStream(
 
         yield { type: 'tool_result', data: { tool: call.name, result: toolResult.substring(0, 500) } };
 
-        // Sync session cart when CREATE_CART succeeds
+        // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
         if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
           const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
           const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
-          for (const item of itemsArray) {
-            conversationStore.addCartItem(session.id, {
-              barcode: item.barcode,
-              name: item.name || item.barcode,
-              price: item.price || 0,
-              quantity: Number(item.qty) || 1,
-              addedAt: Date.now(),
-            });
-          }
+          conversationStore.updateCart(session.id, itemsArray.map(item => ({
+            barcode: item.barcode,
+            name: item.name || item.barcode,
+            price: item.price || 0,
+            quantity: Number(item.qty) || 1,
+            addedAt: Date.now(),
+          })));
         }
 
         functionResponses.push({

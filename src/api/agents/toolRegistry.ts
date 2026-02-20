@@ -170,7 +170,7 @@ const createCartTool: ToolDefinition = {
   geminiDeclaration: {
     name: 'create_cart',
     description:
-      'Create a shopping cart with medicine items. Each item requires a barcode and quantity. Accepts an array of items.',
+      'Create or update the shopping cart. ALWAYS include ALL items currently in the cart (not just the new one). Each item requires barcode, qty, name, and price — extract name and price from search results.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -181,14 +181,22 @@ const createCartTool: ToolDefinition = {
             properties: {
               barcode: {
                 type: SchemaType.STRING,
-                description: 'The barcode of the medicine',
+                description: 'The barcode of the medicine (from [internal:barcode=...] tag)',
               } as Schema,
               qty: {
                 type: SchemaType.STRING,
-                description: 'The quantity of the medicine (string or number accepted)',
+                description: 'The quantity of the medicine',
+              } as Schema,
+              name: {
+                type: SchemaType.STRING,
+                description: 'The full product name of the medicine (from search results)',
+              } as Schema,
+              price: {
+                type: SchemaType.NUMBER,
+                description: 'The price of the medicine in Naira (from search results)',
               } as Schema,
             },
-            required: ['barcode', 'qty'],
+            required: ['barcode', 'qty', 'name', 'price'],
           } as Schema,
         } as Schema,
       },
