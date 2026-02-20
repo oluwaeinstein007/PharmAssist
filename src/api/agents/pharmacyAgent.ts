@@ -1,10 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getGeminiDeclarations, executeTool } from './toolRegistry.js';
-import {
-  conversationStore,
-  type ConversationMessage,
-  type SessionCartItem,
-} from '../sessions/conversationStore.js';
+import { conversationStore } from '../sessions/conversationStore.js';
 import { ApiError, ErrorCode } from '../types/errors.js';
 import { getSystemPromptForRole, getAllowedToolsForRole } from '../rbac/roles.js';
 
@@ -48,16 +44,6 @@ interface ToolCallRecord {
   result?: string;
 }
 
-function extractCartUpdates(toolCalls: ToolCallRecord[]): SessionCartItem[] {
-  const items: SessionCartItem[] = [];
-  for (const tc of toolCalls) {
-    if (tc.name === 'create_cart' && tc.result && tc.result.includes('successfully')) {
-      // Cart was created via the external API — we don't add to local cart
-      // (the frontend manages local cart state)
-    }
-  }
-  return items;
-}
 
 function extractPinnedFacts(
   sessionId: string,
@@ -163,6 +149,21 @@ export async function processChat(
         args: call.args as Record<string, unknown>,
         result: toolResult,
       });
+
+      // Sync session cart when CREATE_CART succeeds
+      if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
+        const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
+        const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
+        for (const item of itemsArray) {
+          conversationStore.addCartItem(session.id, {
+            barcode: item.barcode,
+            name: item.name || item.barcode,
+            price: item.price || 0,
+            quantity: Number(item.qty) || 1,
+            addedAt: Date.now(),
+          });
+        }
+      }
 
       functionResponses.push({
         functionResponse: {
@@ -316,6 +317,21 @@ export async function* processChatStream(
         });
 
         yield { type: 'tool_result', data: { tool: call.name, result: toolResult.substring(0, 500) } };
+
+        // Sync session cart when CREATE_CART succeeds
+        if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
+          const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
+          const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
+          for (const item of itemsArray) {
+            conversationStore.addCartItem(session.id, {
+              barcode: item.barcode,
+              name: item.name || item.barcode,
+              price: item.price || 0,
+              quantity: Number(item.qty) || 1,
+              addedAt: Date.now(),
+            });
+          }
+        }
 
         functionResponses.push({
           functionResponse: {
