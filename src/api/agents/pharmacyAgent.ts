@@ -12,10 +12,21 @@ const MAX_TOOL_ITERATIONS = 5;
 
 // ── Public types ────────────────────────────────────────────────────────────
 
+export interface MedicineSearchResult {
+  name: string;
+  barcode: string;
+  price: number;
+  inStock: boolean;
+  quantity: number;
+  category: string;
+}
+
 export interface AgentResult {
   response: string;
   conversationId: string;
   toolsUsed: string[];
+  /** Structured medicine results from the last search_medicines call — for frontend rendering */
+  searchResults?: MedicineSearchResult[];
   /** Session snapshot for the client to cache (mobile restore) */
   sessionState: {
     turnCount: number;
@@ -28,6 +39,37 @@ export interface AgentResult {
 export interface StreamEvent {
   type: 'token' | 'tool_call' | 'tool_result' | 'context' | 'done' | 'error';
   data: Record<string, unknown>;
+}
+
+// ── Search result parser ─────────────────────────────────────────────────────
+// Extracts structured medicine data from search_medicines tool result text
+// so the frontend can render interactive cards without parsing LLM prose.
+
+function parseSearchResults(toolResult: string): MedicineSearchResult[] {
+  const medicines: MedicineSearchResult[] = [];
+  const blocks = toolResult.split(/\n(?=\d+\. \*\*)/);
+
+  for (const block of blocks) {
+    const nameMatch = block.match(/\d+\. \*\*(.+?)\*\*/);
+    const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
+    const qtyMatch = block.match(/\[internal:qty=(\d+)\]/);
+    const priceMatch = block.match(/Price: ₦([\d.]+)/);
+    const statusMatch = block.match(/Status: ([\w ]+)/);
+    const categoryMatch = block.match(/Category: (.+)/);
+
+    if (nameMatch && barcodeMatch) {
+      medicines.push({
+        name: nameMatch[1].trim(),
+        barcode: barcodeMatch[1].trim(),
+        quantity: qtyMatch ? parseInt(qtyMatch[1]) : 0,
+        price: priceMatch ? parseFloat(priceMatch[1]) : 0,
+        inStock: statusMatch ? statusMatch[1].trim().toLowerCase().includes('in stock') : false,
+        category: categoryMatch ? categoryMatch[1].trim() : '',
+      });
+    }
+  }
+
+  return medicines;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,6 +122,7 @@ export async function processChat(
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const toolsUsed: string[] = [];
   const allToolCalls: ToolCallRecord[] = [];
+  let latestSearchResults: MedicineSearchResult[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -153,6 +196,12 @@ export async function processChat(
         result: toolResult,
       });
 
+      // Capture structured search results so the frontend can render interactive medicine cards
+      if (call.name === 'search_medicines') {
+        const parsed = parseSearchResults(toolResult);
+        if (parsed.length > 0) latestSearchResults = parsed;
+      }
+
       // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
       if (call.name === 'create_cart' && toolResult.includes('successfully')) {
         // Persist the cart UID from the result so it's reused next time
@@ -206,6 +255,7 @@ export async function processChat(
     response: finalResponse,
     conversationId: session.id,
     toolsUsed: [...new Set(toolsUsed)],
+    searchResults: latestSearchResults.length > 0 ? latestSearchResults : undefined,
     sessionState: {
       turnCount: session.turnCount,
       cartItemCount: session.cart.length,
@@ -232,6 +282,7 @@ export async function* processChatStream(
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const toolsUsed: string[] = [];
   const allToolCalls: ToolCallRecord[] = [];
+  let latestSearchResults: MedicineSearchResult[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -327,6 +378,12 @@ export async function* processChatStream(
 
         yield { type: 'tool_result', data: { tool: call.name, result: toolResult.substring(0, 500) } };
 
+        // Capture structured search results for the done event
+        if (call.name === 'search_medicines') {
+          const parsed = parseSearchResults(toolResult);
+          if (parsed.length > 0) latestSearchResults = parsed;
+        }
+
         // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
         if (call.name === 'create_cart' && toolResult.includes('successfully')) {
           // Persist the cart UID from the result so it's reused next time
@@ -390,6 +447,7 @@ export async function* processChatStream(
       data: {
         conversationId: session.id,
         toolsUsed: [...new Set(toolsUsed)],
+        searchResults: latestSearchResults.length > 0 ? latestSearchResults : undefined,
         sessionState: {
           turnCount: session.turnCount,
           cartItemCount: session.cart.length,
