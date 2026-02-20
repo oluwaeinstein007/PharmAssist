@@ -4,6 +4,8 @@ import { CreateCartService, type CartItem } from "../services/createCartService.
 const cartItemSchema = z.object({
   barcode: z.string().describe("The barcode of the medicine"),
   qty: z.union([z.string(), z.number()]).describe("The quantity of the medicine"),
+  name: z.string().optional().describe("The name of the medicine (from search results)"),
+  price: z.number().optional().describe("The price of the medicine in Naira (from search results)"),
 });
 
 // Accept either a single item or an array of items to make the tool more flexible
@@ -40,7 +42,7 @@ export const CreateCartTool = {
         return `
 Cart created successfully!
 Cart ID (UID): ${result.cartId}
-Items: ${args.items.map(item => `${item.barcode} (qty: ${item.qty})`).join(", ")}
+Items: ${itemsArray.map(item => `${item.barcode} (qty: ${item.qty})`).join(", ")}
 ${
   result.cartUrl
     ? `\nComplete your transaction here: ${result.cartUrl}`
