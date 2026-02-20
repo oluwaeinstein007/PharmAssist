@@ -43,6 +43,9 @@ export interface ConversationSession {
   /** Cart state tracked across the entire session */
   cart: SessionCartItem[];
 
+  /** Stable cart UID reused across all create_cart calls in this session */
+  cartId: string;
+
   /** Last search results so the agent can reference them */
   lastSearchResults: string;
 
@@ -64,6 +67,7 @@ export interface SessionSnapshot {
   contextSummary: string;
   pinnedFacts: PinnedFact[];
   cart: SessionCartItem[];
+  cartId: string;
   lastSearchResults: string;
   recentMessages: ConversationMessage[];
   turnCount: number;
@@ -103,6 +107,7 @@ export class ConversationStore {
       contextSummary: '',
       pinnedFacts: [],
       cart: [],
+      cartId: '',
       lastSearchResults: '',
       createdAt: now,
       lastActiveAt: now,
@@ -221,6 +226,13 @@ export class ConversationStore {
     const session = this.get(id);
     if (!session) return;
     session.cart = [];
+    session.cartId = '';
+  }
+
+  setCartId(id: string, cartId: string): void {
+    const session = this.get(id);
+    if (!session) return;
+    session.cartId = cartId;
   }
 
   // ── Context window for LLM ─────────────────────────────────────────────
@@ -344,6 +356,7 @@ export class ConversationStore {
       contextSummary: session.contextSummary,
       pinnedFacts: session.pinnedFacts,
       cart: session.cart,
+      cartId: session.cartId,
       lastSearchResults: session.lastSearchResults,
       recentMessages: session.history.slice(-CONTEXT_WINDOW_SIZE),
       turnCount: session.turnCount,
@@ -365,6 +378,7 @@ export class ConversationStore {
       contextSummary: snapshot.contextSummary,
       pinnedFacts: snapshot.pinnedFacts,
       cart: snapshot.cart,
+      cartId: snapshot.cartId || '',
       lastSearchResults: snapshot.lastSearchResults,
       createdAt: snapshot.createdAt,
       lastActiveAt: Date.now(),

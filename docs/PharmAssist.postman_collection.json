@@ -89,10 +89,16 @@
           },
           "response": [
             {
-              "name": "200 OK",
+              "name": "200 OK — search",
               "status": "OK",
               "code": 200,
               "body": "{\n  \"success\": true,\n  \"data\": {\n    \"response\": \"I found paracetamol products for you...\",\n    \"conversationId\": \"conv-uuid-here\",\n    \"toolsUsed\": [\"search_medicines\"],\n    \"sessionState\": {\n      \"turnCount\": 1,\n      \"cartItemCount\": 0,\n      \"pinnedFactCount\": 0,\n      \"hasSummary\": false\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 1200\n  }\n}"
+            },
+            {
+              "name": "200 OK — cart created",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"response\": \"I've added Paracetamol 500mg to your cart. You can complete your purchase here: https://mshop.mptechteam.com/shop-cart?medtoken=xxx\",\n    \"conversationId\": \"conv-uuid-here\",\n    \"toolsUsed\": [\"search_medicines\", \"create_cart\"],\n    \"sessionState\": {\n      \"turnCount\": 2,\n      \"cartItemCount\": 1,\n      \"pinnedFactCount\": 0,\n      \"hasSummary\": false\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 1800\n  }\n}"
             }
           ]
         },
@@ -292,7 +298,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "cart"]
             },
-            "description": "Create a shopping cart with one or more items. Calls the external Cart Actions API. Returns a `cartUrl` for the customer to complete payment."
+            "description": "Create a shopping cart directly via the external Cart Actions API (bypasses the agent). Each call generates a new cart UID and URL. For agent-managed carts (where the stable cart link is reused across turns), use the chat endpoint instead."
           },
           "response": [
             {
@@ -421,14 +427,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "sessions", "{{session_id}}"]
             },
-            "description": "Get the full session snapshot including the last 20 messages (`recentMessages`), rolling `contextSummary` (if older messages were summarized), cart state, and pinned facts. Useful for restoring session state on a new client."
+            "description": "Get the full session snapshot including the last 20 messages (`recentMessages`), rolling `contextSummary` (if older messages were summarized), cart state (`cart` array with name/price/quantity per item), `cartId` (the stable cart UID reused across all `create_cart` calls — same checkout URL throughout the session), and pinned facts. Useful for restoring session state on a new client."
           },
           "response": [
             {
               "name": "200 OK",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"conv-uuid\",\n    \"turnCount\": 5,\n    \"recentMessages\": [\n      { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n      { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n    ],\n    \"contextSummary\": null,\n    \"cart\": [],\n    \"pinnedFacts\": [],\n    \"createdAt\": 1708336800000,\n    \"lastActiveAt\": 1708338600000,\n    \"metadata\": { \"platform\": \"postman\" }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"conv-uuid\",\n    \"turnCount\": 5,\n    \"recentMessages\": [\n      { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n      { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n    ],\n    \"contextSummary\": null,\n    \"cart\": [\n      {\n        \"barcode\": \"6001007107709\",\n        \"name\": \"Paracetamol 500mg\",\n        \"price\": 250,\n        \"quantity\": 2,\n        \"addedAt\": 1708337000000\n      }\n    ],\n    \"cartId\": \"stable-cart-uuid\",\n    \"pinnedFacts\": [],\n    \"createdAt\": 1708336800000,\n    \"lastActiveAt\": 1708338600000,\n    \"metadata\": { \"platform\": \"postman\" }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
             }
           ]
         },
@@ -442,7 +448,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"conv-uuid\",\n  \"turnCount\": 5,\n  \"recentMessages\": [\n    { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n    { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n  ],\n  \"contextSummary\": null,\n  \"cart\": [],\n  \"pinnedFacts\": [],\n  \"createdAt\": 1708336800000,\n  \"lastActiveAt\": 1708338600000,\n  \"metadata\": { \"platform\": \"mobile\" }\n}",
+              "raw": "{\n  \"id\": \"conv-uuid\",\n  \"turnCount\": 5,\n  \"recentMessages\": [\n    { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n    { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n  ],\n  \"contextSummary\": null,\n  \"cart\": [\n    {\n      \"barcode\": \"6001007107709\",\n      \"name\": \"Paracetamol 500mg\",\n      \"price\": 250,\n      \"quantity\": 2,\n      \"addedAt\": 1708337000000\n    }\n  ],\n  \"cartId\": \"stable-cart-uuid\",\n  \"pinnedFacts\": [],\n  \"createdAt\": 1708336800000,\n  \"lastActiveAt\": 1708338600000,\n  \"metadata\": { \"platform\": \"mobile\" }\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -450,7 +456,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "sessions", "restore"]
             },
-            "description": "Restore a session from a client-cached snapshot (e.g. from local storage on a mobile app). The snapshot body is the same shape returned by `GET /api/v1/sessions/:id`."
+            "description": "Restore a session from a client-cached snapshot (e.g. from local storage on a mobile app). The snapshot body is the same shape returned by `GET /api/v1/sessions/:id`. Include `cartId` so the restored session reuses the same checkout link."
           }
         },
         {
@@ -480,8 +486,16 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "sessions", "{{session_id}}", "cart"]
             },
-            "description": "Get the current cart for a session, including itemCount and total price."
-          }
+            "description": "Get the current cart for a session. The cart is automatically synced by the agent each time `create_cart` is called — items include `name`, `price`, `quantity`, and `addedAt`. `total` is computed server-side."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"items\": [\n      {\n        \"barcode\": \"6001007107709\",\n        \"name\": \"Paracetamol 500mg\",\n        \"price\": 250,\n        \"quantity\": 2,\n        \"addedAt\": 1708337000000\n      },\n      {\n        \"barcode\": \"6001007200004\",\n        \"name\": \"Amoxicillin 250mg\",\n        \"price\": 450,\n        \"quantity\": 1,\n        \"addedAt\": 1708337500000\n      }\n    ],\n    \"itemCount\": 2,\n    \"total\": 950\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
+            }
+          ]
         },
         {
           "name": "Session Cart — Add Item",

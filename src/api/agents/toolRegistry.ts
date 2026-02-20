@@ -211,7 +211,9 @@ const createCartTool: ToolDefinition = {
       qty: item.qty,
     }));
 
-    const result = await service.createCart(cartItems);
+    // Reuse existing cart UID if provided by the agent (avoids creating a new cart link)
+    const existingCartId = args.cart_id ? String(args.cart_id) : undefined;
+    const result = await service.createCart(cartItems, existingCartId);
 
     if (result.success) {
       let response = `Cart created successfully!\nCart ID: ${result.cartId}`;

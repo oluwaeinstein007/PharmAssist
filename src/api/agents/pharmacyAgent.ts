@@ -138,11 +138,14 @@ export async function processChat(
       toolsUsed.push(call.name);
       conversationStore.addToolUsed(session.id, call.name);
 
-      const toolResult = await executeTool(
-        call.name,
-        (call.args as Record<string, unknown>) || {},
-        allowedTools,
-      );
+      // Inject the session's stable cart UID so the external cart is updated, not recreated
+      let callArgs = (call.args as Record<string, unknown>) || {};
+      if (call.name === 'create_cart') {
+        const existingCartId = conversationStore.get(session.id)?.cartId;
+        if (existingCartId) callArgs = { ...callArgs, cart_id: existingCartId };
+      }
+
+      const toolResult = await executeTool(call.name, callArgs, allowedTools);
 
       allToolCalls.push({
         name: call.name,
@@ -151,7 +154,12 @@ export async function processChat(
       });
 
       // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
-      if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
+      if (call.name === 'create_cart' && toolResult.includes('successfully')) {
+        // Persist the cart UID from the result so it's reused next time
+        const cartIdMatch = toolResult.match(/Cart ID:\s*([a-f0-9-]+)/i);
+        if (cartIdMatch && !conversationStore.get(session.id)?.cartId) {
+          conversationStore.setCartId(session.id, cartIdMatch[1]);
+        }
         const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
         const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
         conversationStore.updateCart(session.id, itemsArray.map(item => ({
@@ -302,11 +310,14 @@ export async function* processChatStream(
         toolsUsed.push(call.name);
         conversationStore.addToolUsed(session.id, call.name);
 
-        const toolResult = await executeTool(
-          call.name,
-          (call.args as Record<string, unknown>) || {},
-          allowedTools,
-        );
+        // Inject the session's stable cart UID so the external cart is updated, not recreated
+        let callArgs = (call.args as Record<string, unknown>) || {};
+        if (call.name === 'create_cart') {
+          const existingCartId = conversationStore.get(session.id)?.cartId;
+          if (existingCartId) callArgs = { ...callArgs, cart_id: existingCartId };
+        }
+
+        const toolResult = await executeTool(call.name, callArgs, allowedTools);
 
         allToolCalls.push({
           name: call.name,
@@ -317,7 +328,12 @@ export async function* processChatStream(
         yield { type: 'tool_result', data: { tool: call.name, result: toolResult.substring(0, 500) } };
 
         // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
-        if (call.name.toUpperCase() === 'CREATE_CART' && toolResult.includes('successfully')) {
+        if (call.name === 'create_cart' && toolResult.includes('successfully')) {
+          // Persist the cart UID from the result so it's reused next time
+          const cartIdMatch = toolResult.match(/Cart ID:\s*([a-f0-9-]+)/i);
+          if (cartIdMatch && !conversationStore.get(session.id)?.cartId) {
+            conversationStore.setCartId(session.id, cartIdMatch[1]);
+          }
           const cartArgs = call.args as { items: Array<{ barcode: string; qty: string | number; name?: string; price?: number }> | { barcode: string; qty: string | number; name?: string; price?: number } };
           const itemsArray = Array.isArray(cartArgs.items) ? cartArgs.items : [cartArgs.items];
           conversationStore.updateCart(session.id, itemsArray.map(item => ({
