@@ -1,0 +1,561 @@
+{
+  "info": {
+    "name": "PharmAssist API",
+    "description": "Full API collection for the PharmAssist unified API server (Hono.js, port 5000).\n\n**Auth modes:**\n- Dev mode (`AUTH_ENABLED=false`): no credentials needed; use `X-Role` header to test roles\n- API Key: set `X-API-Key` header (and optionally `X-Role`)\n- JWT: set `Authorization: Bearer <token>`\n\nSet the `base_url` collection variable to your server address.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000", "type": "string" },
+    { "key": "api_key", "value": "", "type": "string", "description": "X-API-Key value (leave empty if AUTH_ENABLED=false)" },
+    { "key": "jwt_token", "value": "", "type": "string", "description": "Bearer JWT token (alternative to api_key)" },
+    { "key": "conversation_id", "value": "", "type": "string", "description": "Auto-populated from chat responses" },
+    { "key": "session_id", "value": "", "type": "string", "description": "Session ID for session management requests" },
+    { "key": "medicine_id", "value": "", "type": "string", "description": "Qdrant point ID of a medicine" },
+    { "key": "barcode", "value": "6001007107709", "type": "string", "description": "Product barcode for stock/cart requests" }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health"]
+            },
+            "description": "Public endpoint. Returns service status, Qdrant connectivity, Gemini config, and active session count. No auth required."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"service\": \"PharmAssist API\",\n    \"version\": \"1.0.0\",\n    \"status\": \"healthy\",\n    \"uptime\": 120.5,\n    \"dependencies\": {\n      \"qdrant\": \"connected\",\n      \"gemini\": \"configured\"\n    },\n    \"sessions\": {\n      \"active\": 3\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 45\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Send Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.success && res.data && res.data.conversationId) {",
+                  "  pm.collectionVariables.set('conversation_id', res.data.conversationId);",
+                  "  pm.collectionVariables.set('session_id', res.data.conversationId);",
+                  "  console.log('conversation_id set to:', res.data.conversationId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer", "description": "customer | pharmacist | admin (dev mode only)" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"search for paracetamol\",\n  \"conversationId\": \"{{conversation_id}}\",\n  \"platform\": \"postman\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Send a chat message. The agent will respond and optionally call tools (search, stock check, cart). `conversationId` is optional on first message — the server creates one and returns it. Subsequent messages should pass the same `conversationId` to continue the session.\n\n**Auto-capture:** The test script auto-saves `conversationId` to the collection variable."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"response\": \"I found paracetamol products for you...\",\n    \"conversationId\": \"conv-uuid-here\",\n    \"toolsUsed\": [\"search_medicines\"],\n    \"sessionState\": {\n      \"turnCount\": 1,\n      \"cartItemCount\": 0,\n      \"pinnedFactCount\": 0,\n      \"hasSummary\": false\n    }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 1200\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Send Message (Header Conversation ID)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Conversation-Id", "value": "{{conversation_id}}", "description": "Alternative to passing conversationId in body" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I have a headache, what can I take?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Same as Send Message but passes the conversation ID via the `X-Conversation-Id` header instead of the request body. Useful for mobile clients."
+          }
+        },
+        {
+          "name": "Streaming Chat (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"find alternatives for amoxicillin\",\n  \"conversationId\": \"{{conversation_id}}\",\n  \"platform\": \"postman\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/stream",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "stream"]
+            },
+            "description": "Streaming version of chat using Server-Sent Events (SSE). Each SSE event has a `type` field:\n- `token` — partial text chunk\n- `tool_call` — a tool was invoked\n- `tool_result` — tool execution result\n- `done` — final complete response\n- `error` — error event\n\nNote: Postman shows the raw SSE stream. Use a browser or EventSource client for proper streaming."
+          }
+        },
+        {
+          "name": "Chat as Pharmacist",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "pharmacist" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What are the drug interactions between metformin and ibuprofen?\",\n  \"conversationId\": \"{{conversation_id}}\",\n  \"platform\": \"postman\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Chat with pharmacist role — gets a clinical system prompt with richer drug interaction context and access to additional tools (`log_purchase`, `notify_admin`)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Medicines",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/search?q=paracetamol&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search"],
+              "query": [
+                { "key": "q", "value": "paracetamol", "description": "Search query (medicine name, symptom, or condition)" },
+                { "key": "limit", "value": "5", "description": "Max results (default 5, max 20)" }
+              ]
+            },
+            "description": "Direct vector search via Qdrant + Gemini embeddings. Bypasses the agent — returns raw search results."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"query\": \"paracetamol\",\n    \"medicines\": [\n      {\n        \"id\": \"qdrant-point-id\",\n        \"product_name\": \"Paracetamol 500mg\",\n        \"barcode\": \"6001007107709\",\n        \"price\": 250,\n        \"qty\": 100,\n        \"category_name\": \"Analgesics\",\n        \"score\": 0.95\n      }\n    ],\n    \"totalResults\": 1\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 320\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search Medicines (symptom query)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/search?q=fever+and+headache&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search"],
+              "query": [
+                { "key": "q", "value": "fever and headache" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Semantic search using a symptom description — the embedding model matches it to relevant medicines."
+          }
+        },
+        {
+          "name": "Batch Search",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"queries\": [\"paracetamol\", \"amoxicillin\", \"vitamin C\"],\n  \"limit\": 3\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/search/batch",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search", "batch"]
+            },
+            "description": "Search multiple medicines in one request. Runs all queries in parallel. Returns an array of results, one per query."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"results\": [\n      { \"query\": \"paracetamol\", \"medicines\": [...], \"totalResults\": 2 },\n      { \"query\": \"amoxicillin\", \"medicines\": [...], \"totalResults\": 1 },\n      { \"query\": \"vitamin C\", \"medicines\": [...], \"totalResults\": 3 }\n    ]\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 450\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Stock",
+      "item": [
+        {
+          "name": "Check Stock by Barcode",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/stock/{{barcode}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "stock", "{{barcode}}"]
+            },
+            "description": "Check availability and pricing for a product by barcode. Calls the external MedPlus products API."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"barcode\": \"6001007107709\",\n    \"name\": \"Paracetamol 500mg\",\n    \"price\": 250,\n    \"qty\": 100,\n    \"available\": true\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 180\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Create Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"barcode\": \"{{barcode}}\", \"qty\": 2 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "cart"]
+            },
+            "description": "Create a shopping cart with one or more items. Calls the external Cart Actions API. Returns a `cartUrl` for the customer to complete payment."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"cartId\": \"cart-uuid\",\n    \"cartUrl\": \"https://checkout.example.com/cart/cart-uuid\",\n    \"message\": \"Cart created successfully\"\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 350\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Cart (multi-item)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"barcode\": \"6001007107709\", \"qty\": 2 },\n    { \"barcode\": \"6001007200004\", \"qty\": 1 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "cart"]
+            },
+            "description": "Create a cart with multiple items."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Medicine",
+      "item": [
+        {
+          "name": "Get Medicine Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/medicine/{{medicine_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "medicine", "{{medicine_id}}"]
+            },
+            "description": "Get full details for a medicine by its Qdrant point ID. Set `medicine_id` in the collection variables (copy from a search result's `id` field)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"qdrant-point-id\",\n    \"product_name\": \"Paracetamol 500mg\",\n    \"barcode\": \"6001007107709\",\n    \"price\": 250,\n    \"qty\": 100,\n    \"category_name\": \"Analgesics\"\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 90\n  }\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"NOT_FOUND\",\n    \"message\": \"Medicine with ID xyz not found\"\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Medicine Alternatives",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/alternatives/{{medicine_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "alternatives", "{{medicine_id}}"]
+            },
+            "description": "Find alternative medicines for a given medicine ID. Uses semantic search on the medicine name + category. Returns up to 9 alternatives (excludes the original)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"original\": {\n      \"id\": \"qdrant-point-id\",\n      \"name\": \"Paracetamol 500mg\",\n      \"price\": 250,\n      \"category\": \"Analgesics\"\n    },\n    \"alternatives\": [\n      {\n        \"id\": \"other-id\",\n        \"product_name\": \"Panadol Extra\",\n        \"price\": 350,\n        \"score\": 0.88\n      }\n    ],\n    \"totalAlternatives\": 5\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\",\n    \"executionTimeMs\": 410\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "List My Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions"]
+            },
+            "description": "List all sessions belonging to the authenticated user. Returns metadata only (no message history)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"sessions\": [\n      {\n        \"id\": \"conv-uuid\",\n        \"turnCount\": 5,\n        \"cartItemCount\": 2,\n        \"pinnedFactCount\": 1,\n        \"hasSummary\": false,\n        \"createdAt\": \"2026-02-19T09:00:00.000Z\",\n        \"lastActiveAt\": \"2026-02-19T09:30:00.000Z\",\n        \"platform\": \"postman\"\n      }\n    ],\n    \"total\": 1\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Session Snapshot",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}"]
+            },
+            "description": "Get the full session snapshot including the last 20 messages (`recentMessages`), rolling `contextSummary` (if older messages were summarized), cart state, and pinned facts. Useful for restoring session state on a new client."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"conv-uuid\",\n    \"turnCount\": 5,\n    \"recentMessages\": [\n      { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n      { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n    ],\n    \"contextSummary\": null,\n    \"cart\": [],\n    \"pinnedFacts\": [],\n    \"createdAt\": 1708336800000,\n    \"lastActiveAt\": 1708338600000,\n    \"metadata\": { \"platform\": \"postman\" }\n  },\n  \"meta\": {\n    \"requestId\": \"abc-123\",\n    \"timestamp\": \"2026-02-19T10:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Restore Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"conv-uuid\",\n  \"turnCount\": 5,\n  \"recentMessages\": [\n    { \"role\": \"user\", \"parts\": [{ \"text\": \"search for paracetamol\" }] },\n    { \"role\": \"model\", \"parts\": [{ \"text\": \"I found the following...\" }] }\n  ],\n  \"contextSummary\": null,\n  \"cart\": [],\n  \"pinnedFacts\": [],\n  \"createdAt\": 1708336800000,\n  \"lastActiveAt\": 1708338600000,\n  \"metadata\": { \"platform\": \"mobile\" }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/restore",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "restore"]
+            },
+            "description": "Restore a session from a client-cached snapshot (e.g. from local storage on a mobile app). The snapshot body is the same shape returned by `GET /api/v1/sessions/:id`."
+          }
+        },
+        {
+          "name": "Delete Session",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}"]
+            },
+            "description": "Delete a session and all its history from the in-memory store."
+          }
+        },
+        {
+          "name": "Session Cart — Get",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}", "cart"]
+            },
+            "description": "Get the current cart for a session, including itemCount and total price."
+          }
+        },
+        {
+          "name": "Session Cart — Add Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"barcode\": \"{{barcode}}\",\n  \"name\": \"Paracetamol 500mg\",\n  \"price\": 250,\n  \"quantity\": 2\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}", "cart"]
+            },
+            "description": "Add an item to the session's server-side cart. `barcode` and `name` are required."
+          }
+        },
+        {
+          "name": "Session Cart — Replace All Items",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"barcode\": \"6001007107709\", \"name\": \"Paracetamol 500mg\", \"price\": 250, \"quantity\": 3 },\n    { \"barcode\": \"6001007200004\", \"name\": \"Amoxicillin 250mg\", \"price\": 450, \"quantity\": 1 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}", "cart"]
+            },
+            "description": "Replace the entire cart contents with the provided items array."
+          }
+        },
+        {
+          "name": "Session Cart — Clear",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}", "cart"]
+            },
+            "description": "Clear all items from the session cart."
+          }
+        },
+        {
+          "name": "Session Cart — Remove Single Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sessions/{{session_id}}/cart/{{barcode}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sessions", "{{session_id}}", "cart", "{{barcode}}"]
+            },
+            "description": "Remove a single item from the session cart by barcode."
+          }
+        }
+      ]
+    }
+  ]
+}
