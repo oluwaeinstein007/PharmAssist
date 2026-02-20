@@ -40,17 +40,17 @@ export class CreateCartService {
     this.apiEndpoint = `${this.apiBaseUrl}/bot/cart-actions`;
   }
 
-  async createCart(items: CartItem[]): Promise<CreateCartResponse> {
-    const uid = randomUUID();
+  async createCart(items: CartItem[], uid?: string): Promise<CreateCartResponse> {
+    const cartUid = uid || randomUUID();
     const payload: CreateCartRequest = {
-      uid,
+      uid: cartUid,
       items: items.map(item => ({
         barcode: item.barcode,
         qty: typeof item.qty === "number" ? String(item.qty) : item.qty,
       })),
     };
 
-    console.log(`[CreateCartService] Creating cart with UID: ${uid}`);
+    console.log(`[CreateCartService] Creating cart with UID: ${cartUid}`);
     console.log(`[CreateCartService] Payload:`, JSON.stringify(payload, null, 2));
 
     try {
@@ -75,7 +75,7 @@ export class CreateCartService {
       return {
         success: true,
         message: "Cart created successfully",
-        cartId: uid,
+        cartId: cartUid,
         cartUrl: result.data?.url || undefined,
         ...result,
       };
