@@ -49,6 +49,9 @@ export interface ConversationSession {
   /** Last search results so the agent can reference them */
   lastSearchResults: string;
 
+  /** All search results accumulated during this session (last 10), for cross-turn fallback matching */
+  searchResultsHistory: string[];
+
   createdAt: number;
   lastActiveAt: number;
   turnCount: number;
@@ -69,6 +72,7 @@ export interface SessionSnapshot {
   cart: SessionCartItem[];
   cartId: string;
   lastSearchResults: string;
+  searchResultsHistory: string[];
   recentMessages: ConversationMessage[];
   turnCount: number;
   createdAt: number;
@@ -109,6 +113,7 @@ export class ConversationStore {
       cart: [],
       cartId: '',
       lastSearchResults: '',
+      searchResultsHistory: [],
       createdAt: now,
       lastActiveAt: now,
       turnCount: 0,
@@ -149,6 +154,8 @@ export class ConversationStore {
       for (const tc of fullMessage.toolCalls) {
         if (tc.name === 'search_medicines' && tc.result) {
           session.lastSearchResults = tc.result;
+          session.searchResultsHistory.push(tc.result);
+          if (session.searchResultsHistory.length > 10) session.searchResultsHistory.shift();
         }
       }
     }
@@ -358,6 +365,7 @@ export class ConversationStore {
       cart: session.cart,
       cartId: session.cartId,
       lastSearchResults: session.lastSearchResults,
+      searchResultsHistory: session.searchResultsHistory,
       recentMessages: session.history.slice(-CONTEXT_WINDOW_SIZE),
       turnCount: session.turnCount,
       createdAt: session.createdAt,
@@ -380,6 +388,7 @@ export class ConversationStore {
       cart: snapshot.cart,
       cartId: snapshot.cartId || '',
       lastSearchResults: snapshot.lastSearchResults,
+      searchResultsHistory: snapshot.searchResultsHistory ?? [],
       createdAt: snapshot.createdAt,
       lastActiveAt: Date.now(),
       turnCount: snapshot.turnCount,

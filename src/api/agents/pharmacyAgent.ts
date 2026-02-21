@@ -72,6 +72,64 @@ function parseSearchResults(toolResult: string): MedicineSearchResult[] {
   return medicines;
 }
 
+// ── Search result fallback helpers ──────────────────────────────────────────
+// Used when the LLM answers from conversation memory without calling
+// search_medicines — we still need to return structured data to the frontend.
+
+/** Returns true when the LLM response clearly contains a medicine product listing. */
+function isProductListingResponse(responseText: string, searchResultsHistory: string[]): boolean {
+  // Naira price + stock status — the most explicit indicator
+  if (/₦[\d,.]+/.test(responseText) && /(in stock|out of stock)/i.test(responseText)) {
+    return true;
+  }
+  // Numbered bold list — LLM rendering of a search result (e.g. "1. **MEDICINE NAME**")
+  if (/\d+\.\s+\*\*/.test(responseText)) {
+    return true;
+  }
+  // Any cached product name from a previous search appears in the response
+  const responseUpper = responseText.toUpperCase();
+  for (const raw of searchResultsHistory) {
+    const parsed = parseSearchResults(raw);
+    if (parsed.some((r) => responseUpper.includes(r.name.toUpperCase()))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Finds the best-matching set of structured search results from the session history.
+ * Scores each cached result set by how many product names appear in the response text,
+ * returning the highest-scoring one (falling back to the most recent if no names match).
+ */
+function findBestMatchingSearchResults(
+  responseText: string,
+  searchResultsHistory: string[],
+): MedicineSearchResult[] {
+  if (searchResultsHistory.length === 0) return [];
+
+  const allParsed = searchResultsHistory
+    .map((raw) => parseSearchResults(raw))
+    .filter((r) => r.length > 0);
+
+  if (allParsed.length === 0) return [];
+  if (allParsed.length === 1) return allParsed[0];
+
+  const responseUpper = responseText.toUpperCase();
+  let bestScore = -1;
+  let bestResults = allParsed[allParsed.length - 1]; // default: most recent
+
+  for (const results of allParsed) {
+    const score = results.filter((r) => responseUpper.includes(r.name.toUpperCase())).length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestResults = results;
+    }
+  }
+
+  return bestResults;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildContextMessage(sessionId: string): string {
@@ -250,6 +308,27 @@ export async function processChat(
 
   // Refresh session reference (summarization may have mutated it)
   session = conversationStore.get(session.id)!;
+
+  // Fallback: when the LLM answered from memory without calling search_medicines,
+  // call the tool programmatically with the user's own message so searchResults
+  // always contains fresh, correct data for what the user actually asked about.
+  if (latestSearchResults.length === 0 && isProductListingResponse(finalResponse, session.searchResultsHistory)) {
+    try {
+      const toolResult = await executeTool('search_medicines', { query: message }, allowedTools);
+      const parsed = parseSearchResults(toolResult);
+      if (parsed.length > 0) {
+        latestSearchResults = parsed;
+        // Keep session in sync so future turns see this search
+        session.lastSearchResults = toolResult;
+        session.searchResultsHistory.push(toolResult);
+        if (session.searchResultsHistory.length > 10) session.searchResultsHistory.shift();
+      }
+    } catch {
+      // Tool call failed — fall back to best-matching cached results
+      const matched = findBestMatchingSearchResults(finalResponse, session.searchResultsHistory);
+      if (matched.length > 0) latestSearchResults = matched;
+    }
+  }
 
   return {
     response: finalResponse,
@@ -441,6 +520,23 @@ export async function* processChatStream(
 
     // Refresh session
     session = conversationStore.get(session.id)!;
+
+    // Fallback: same as non-streaming path — call search_medicines programmatically.
+    if (latestSearchResults.length === 0 && isProductListingResponse(fullText, session.searchResultsHistory)) {
+      try {
+        const toolResult = await executeTool('search_medicines', { query: message }, allowedTools);
+        const parsed = parseSearchResults(toolResult);
+        if (parsed.length > 0) {
+          latestSearchResults = parsed;
+          session.lastSearchResults = toolResult;
+          session.searchResultsHistory.push(toolResult);
+          if (session.searchResultsHistory.length > 10) session.searchResultsHistory.shift();
+        }
+      } catch {
+        const matched = findBestMatchingSearchResults(fullText, session.searchResultsHistory);
+        if (matched.length > 0) latestSearchResults = matched;
+      }
+    }
 
     yield {
       type: 'done',
