@@ -128,27 +128,51 @@ export class QdrantService {
     }
   }
 
-  // Method to add a document chunk with its embedding to Qdrant
-  async addChunk(id: string, embedding: number[], payload: any): Promise<void> {
+  /**
+   * Convert a barcode string to a stable numeric Qdrant point ID.
+   * - Numeric barcodes (EAN-8, EAN-13, UPC) are used directly as integers.
+   * - Non-numeric barcodes are hashed to a 32-bit unsigned integer.
+   */
+  private barcodeToId(barcode: string): number {
+    const parsed = parseInt(barcode, 10);
+    if (!isNaN(parsed) && parsed > 0 && String(parsed) === barcode) {
+      return parsed;
+    }
+    // djb2 hash for non-numeric barcodes
+    let hash = 5381;
+    for (let i = 0; i < barcode.length; i++) {
+      hash = ((hash << 5) + hash) ^ barcode.charCodeAt(i);
+      hash = hash >>> 0;
+    }
+    return hash || 1;
+  }
+
+  // Single-point upsert — delegates to addChunksBatch
+  async addChunk(barcode: string, embedding: number[], payload: any): Promise<void> {
+    await this.addChunksBatch([{ barcode, embedding, payload }]);
+  }
+
+  /**
+   * Batch upsert multiple points in a single Qdrant request.
+   * Uses barcode as the deterministic stable point ID — re-ingesting the same
+   * barcode will overwrite the existing entry rather than create a duplicate.
+   */
+  async addChunksBatch(
+    points: Array<{ barcode: string; embedding: number[]; payload: any }>
+  ): Promise<void> {
+    if (points.length === 0) return;
     try {
-      const numericId = parseInt(id, 10);
-      if (isNaN(numericId)) {
-        throw new Error(`Invalid numeric ID: ${id}`);
-      }
-      
       await this.client.upsert(this.collectionName, {
         wait: true,
-        points: [
-          {
-            id: numericId,
-            vector: embedding,
-            payload: payload,
-          },
-        ],
+        points: points.map(p => ({
+          id: this.barcodeToId(p.barcode),
+          vector: p.embedding,
+          payload: p.payload,
+        })),
       });
-      console.log(`🧩 Chunk added to Qdrant: ${id}`);
+      console.log(`🧩 Upserted ${points.length} point(s) to Qdrant`);
     } catch (error: any) {
-      console.error(`Error adding chunk ${id} to Qdrant: ${error.message}`);
+      console.error(`Error upserting batch to Qdrant: ${error.message}`);
       throw error;
     }
   }

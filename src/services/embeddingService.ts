@@ -1,84 +1,61 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 
 export class EmbeddingService {
-  private anthropicClient?: Anthropic;
   private googleClient?: GoogleGenAI;
   private provider: 'anthropic' | 'google' | 'none';
   private embeddingModel: string = 'gemini-embedding-001';
-  private embeddingDimensions: number = 3072;
 
   constructor() {
     const provider = process.env.EMBEDDING_PROVIDER || 'anthropic';
     this.provider = provider as 'anthropic' | 'google' | 'none';
 
-    if (this.provider === 'anthropic') {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        console.warn('ANTHROPIC_API_KEY not set. Embeddings will not work with Anthropic provider.');
-      } else {
-        this.anthropicClient = new Anthropic({ apiKey });
-      }
-      this.embeddingModel = process.env.ANTHROPIC_EMBEDDING_MODEL || 'text-embedding-3-small';
-      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
-    } else if (this.provider === 'google') {
+    // Both 'anthropic' and 'google' providers use Google's embedding API
+    // (Anthropic has no native embedding endpoint)
+    if (this.provider === 'anthropic' || this.provider === 'google') {
       const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        console.warn('GOOGLE_API_KEY or GEMINI_API_KEY not set. Embeddings will not work with Google provider.');
+        console.warn('GOOGLE_API_KEY or GEMINI_API_KEY not set. Embeddings will not work.');
       } else {
         this.googleClient = new GoogleGenAI({ apiKey });
       }
       this.embeddingModel = process.env.GOOGLE_EMBEDDING_MODEL || 'gemini-embedding-001';
-      this.embeddingDimensions = parseInt(process.env.EMBEDDING_VECTOR_SIZE || '3072', 10);
     }
 
     console.log(`Embedding service initialized with provider: ${this.provider}`);
   }
 
   /**
-   * Generate embedding for a given text using the configured provider
-   * @param text The text to embed
-   * @returns Array of embedding numbers
+   * Generate embedding for a single text. Delegates to generateBatchEmbeddings.
    */
   async generateEmbedding(text: string): Promise<number[]> {
+    const results = await this.generateBatchEmbeddings([text]);
+    return results[0];
+  }
+
+  /**
+   * Generate embeddings for multiple texts in a single API call.
+   * @param texts Array of texts to embed
+   * @returns Array of embedding vectors, in the same order as input
+   */
+  async generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+
     if (this.provider === 'none') {
-      // Return a dummy embedding for testing purposes
-      return this.generateDummyEmbedding(text);
+      return texts.map(t => this.generateDummyEmbedding(t));
     }
 
-    if (this.provider === 'anthropic') {
-      return this.generateAnthropicEmbedding(text);
-    } else if (this.provider === 'google') {
-      return this.generateGoogleEmbedding(text);
+    if (this.provider === 'anthropic' || this.provider === 'google') {
+      return this.generateGoogleBatchEmbeddings(texts);
     }
 
     throw new Error(`Unknown embedding provider: ${this.provider}`);
   }
 
   /**
-   * Generate embedding using Anthropic's API
+   * Generate embeddings for multiple texts using Google's embedContent API.
+   * The API supports ContentListUnion (array of strings) and returns one embedding per content.
    */
-  private async generateAnthropicEmbedding(text: string): Promise<number[]> {
-    if (!this.anthropicClient) {
-      throw new Error('Anthropic client not initialized. Check your API key.');
-    }
-
-    try {
-      // Note: Anthropic doesn't have a native embedding API in the current SDK
-      // This is a placeholder - you may need to use a different approach or provider
-      console.warn('Anthropic native embeddings not available. Using Google instead.');
-      return this.generateGoogleEmbedding(text);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Error generating Anthropic embedding: ${message}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Generate embedding using Google's API (@google/genai SDK — uses v1 endpoint)
-   */
-  private async generateGoogleEmbedding(text: string): Promise<number[]> {
+  private async generateGoogleBatchEmbeddings(texts: string[]): Promise<number[][]> {
     if (!this.googleClient) {
       throw new Error('Google client not initialized. Check your API key.');
     }
@@ -86,20 +63,27 @@ export class EmbeddingService {
     try {
       const result = await this.googleClient.models.embedContent({
         model: this.embeddingModel,
-        contents: text,
+        contents: texts as any,
       });
 
-      const embedding = result.embeddings?.[0]?.values;
+      const embeddings = result.embeddings;
 
-      if (!embedding || embedding.length === 0) {
-        throw new Error('Empty embedding returned from Google API');
+      if (!embeddings || embeddings.length === 0) {
+        throw new Error('Empty embeddings returned from Google API');
       }
 
-      console.log(`Embedding generated (${embedding.length} dimensions)`);
-      return embedding;
+      if (embeddings.length !== texts.length) {
+        throw new Error(`Expected ${texts.length} embeddings, got ${embeddings.length}`);
+      }
+
+      console.log(`Batch of ${embeddings.length} embeddings generated (${embeddings[0]?.values?.length ?? 0} dims each)`);
+      return embeddings.map(e => {
+        if (!e.values || e.values.length === 0) throw new Error('Empty embedding in batch result');
+        return e.values;
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Error generating Google embedding: ${message}`);
+      console.error(`Error generating Google batch embeddings: ${message}`);
       throw error;
     }
   }
