@@ -1,6 +1,6 @@
 # PharmAssist Feature Status & External API Dependencies
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-03-30
 
 This document tracks every feature from the product requirements, its current implementation status, and which external APIs are needed from the backend/infrastructure team to unblock remaining work.
 
@@ -28,8 +28,8 @@ This document tracks every feature from the product requirements, its current im
 | 1.3 | View product information and usage guidance | **PARTIAL** | `get_medicine_details` returns basic fields (name, price, qty, category). **Missing:** dosage, usage instructions, side effects, manufacturer, expiry. These fields are not in the Qdrant payload or the products API response. |
 | 1.4 | Upload prescriptions (image or PDF) | **NOT BUILT** | Needs: file upload endpoint, cloud storage (S3/GCS), OCR/vision model integration (e.g., Gemini Vision for prescription parsing). |
 | 1.5 | Refill previous prescriptions | **NOT BUILT** | Needs: prescription history API, customer-prescription linking, refill workflow. |
-| 1.6 | Use customer location for nearby store availability | **NOT BUILT** | Needs: multi-store inventory API with store locations, geolocation service. |
-| 1.7 | Confirm if product is available in a specific store | **PARTIAL** | `check_stock` checks global inventory. **Missing:** per-store stock lookup API. |
+| 1.6 | Use customer location for nearby store availability | **PARTIAL** | `GET /api/stores/locations` is now integrated in the SDK (`getStoreLocations()`). `getProductsByStore(sid, { search })` enables per-store product search. Bot escalates location queries to store contacts via WhatsApp/Call. **Missing:** geolocation matching (nearest store by lat/lng). |
+| 1.7 | Confirm if product is available in a specific store | **PARTIAL** | `GET /api/products/stores/{sid}?search=...` and `GET /api/products/stores/{sid}/{barcode}` are now in SDK. Bot now escalates per-store availability queries to direct store contacts (WhatsApp 08054022662). |
 
 ### Orders & Payments
 
@@ -45,13 +45,13 @@ This document tracks every feature from the product requirements, its current im
 
 | # | Feature | Status | Details |
 |---|---------|--------|---------|
-| 1.13 | Ask basic health-related questions (non-diagnostic) | **DONE** | Gemini handles general health Q&A. RBAC system prompt constrains customer role to non-diagnostic answers only. |
+| 1.13 | Ask basic health-related questions (non-diagnostic) | **DONE** | Gemini handles general health Q&A. RBAC system prompt constrains customer role to non-diagnostic answers only. Compliance rules now enforce prescription gates (RC-01), pediatric dosage blocks (RC-02), drug interaction disclaimers (RC-04), and pregnancy warnings (RC-03). |
 
 ### Support & Communication
 
 | # | Feature | Status | Details |
 |---|---------|--------|---------|
-| 1.14 | Chat with a pharmacist (human handoff) | **NOT BUILT** | Needs: live chat routing system, pharmacist availability API, handoff protocol. |
+| 1.14 | Chat with a pharmacist (human handoff) | **PARTIAL** | Bot now surfaces telehealth contact panel (WhatsApp 08187122408 / Call 08113590038 / Email / pharmacist page) on `ES-01` trigger phrases and compliance blocks (RC-01, RC-02, RC-04). Frontend renders these as clickable action buttons. **Missing:** live routing API and pharmacist availability status. |
 | 1.15 | Raise complaints or support tickets | **NOT BUILT** | Needs: ticketing system API (e.g., Zendesk, Freshdesk, or custom). |
 | 1.16 | Receive notifications and alerts | **NOT BUILT** | Needs: push notification service (FCM/APNs), notification preferences API. |
 
@@ -144,10 +144,14 @@ These are cross-cutting capabilities that support the features above:
 | Session Cart (server-side) | **DONE** | Per-session cart synced with LLM context. |
 | Vector Search (Qdrant) | **DONE** | `gemini-embedding-001` with 768 dimensions. Product data indexed. |
 | Streaming Chat (SSE) | **DONE** | Token-by-token streaming with tool call events. |
-| Frontend/Mobile SDK | **DONE** | `PharmAssistClient` + `usePharmAssist` React hook. |
+| Frontend/Mobile SDK | **DONE** | `PharmAssistClient` + `usePharmAssist` React hook. New methods: `getBotConfig()`, `getStoreLocations()`, `getProductsByStore()`, `getProductByBarcode()`. New types exported: `BotConfig`, `StoreLocation`, `StoreProduct`. |
 | Rate Limiting | **DONE** | Global + per-route rate limiters. |
 | Error Handling | **DONE** | Centralized error handler with typed error codes. |
-| API Documentation | **DONE** | `docs/API.md` with full endpoint reference. |
+| API Documentation | **DONE** | `docs/API.md` with full endpoint reference. Updated 2026-03-30 with Bot Config, Store Locations, Store Products, Bot Compliance section, and new SDK methods. |
+| Bot Config API (`/api/bot-config`) | **DONE** | Returns live contact info and links. Integrated in SDK via `getBotConfig()`. Used by system prompt for all escalation flows. |
+| Session Timeout (Frontend) | **DONE** | 15-minute inactivity detection in `Chat.tsx`. Shows reconnect message with support contacts. |
+| Escalation Button Rendering (Frontend) | **DONE** | `Chat.tsx` now auto-renders WhatsApp / Call / Email action buttons whenever bot response contains contact patterns. URL labels are context-aware (Track Order, Speak to Pharmacist, etc.). |
+| Bot Compliance Rules (Customer Role) | **DONE** | Hard rules enforced in system prompt: RC-01 prescription gate, RC-02 pediatric block, RC-03 pregnancy warning, RC-04 drug interaction disclaimer, PD-08 pediatric product filter, ES-01 human handoff, OT-04 non-returnable meds policy, SA/PP/CA/OT escalation flows. |
 
 ---
 
@@ -219,10 +223,10 @@ These services exist in code but do NOT call any real backend. They store data i
 
 | Category | Total Features | Done | Partial | Stub | Not Built |
 |----------|---------------|------|---------|------|-----------|
-| **Customer: Medicines & Products** | 7 | 2 | 2 | 0 | 3 |
+| **Customer: Medicines & Products** | 7 | 2 | 4 | 0 | 1 |
 | **Customer: Orders & Payments** | 5 | 1 | 0 | 0 | 4 |
 | **Customer: Health Support** | 1 | 1 | 0 | 0 | 0 |
-| **Customer: Support & Communication** | 3 | 0 | 0 | 0 | 3 |
+| **Customer: Support & Communication** | 3 | 0 | 1 | 0 | 2 |
 | **Admin: Medicines & Products** | 5 | 1 | 0 | 0 | 4 |
 | **Admin: Analytics & Reporting** | 3 | 0 | 0 | 0 | 3 |
 | **Admin: System Management** | 4 | 0 | 1 | 0 | 3 |
@@ -231,6 +235,6 @@ These services exist in code but do NOT call any real backend. They store data i
 | **Admin: Order Fulfilment** | 3 | 0 | 0 | 0 | 3 |
 | **Admin: Customer Communication** | 3 | 0 | 0 | 0 | 3 |
 | **Admin: Compliance & Records** | 3 | 0 | 0 | 0 | 3 |
-| **TOTAL** | **45** | **6** | **5** | **0** | **34** |
+| **TOTAL** | **45** | **6** | **8** | **0** | **31** |
 
-**Bottom line:** 6 features are fully done, 5 are partially done (mostly limited by missing product detail data or drug interaction databases), and 34 features are blocked waiting for external APIs listed in Section 4.
+**Bottom line (updated 2026-03-30):** 6 features are fully done, 8 are partially done (up from 5 — improved by store location/product SDK integration, human handoff escalation UI, and bot compliance rules), and 31 remain blocked waiting for external APIs listed in Section 4.

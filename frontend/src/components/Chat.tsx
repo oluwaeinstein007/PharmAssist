@@ -2,6 +2,26 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 
+// ── Constants ────────────────────────────────────────────────────────────────
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes inactivity
+
+// Escalation contact info (from /api/bot-config)
+const SUPPORT = {
+  whatsapp: '08054022662',
+  call: '08054022662',
+  email: 'customercare@medplusng.com',
+};
+const TELEHEALTH = {
+  whatsapp: '08187122408',
+  call: '08113590038',
+  email: 'telehealth@medplusng.com',
+  page: 'https://medplusnig.com/telemedicine',
+};
+const LINKS = {
+  orderTracking: 'https://medplusnig.com/track-order',
+  policy: 'https://medplusnig.com/privacy-policy',
+};
+
 interface Message {
   id: string;
   type: 'user' | 'assistant' | 'system' | 'error';
@@ -63,6 +83,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check API connection on mount
   useEffect(() => {
@@ -87,6 +108,26 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // ── Session timeout ──────────────────────────────────────────────────────
+  const resetTimeout = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setMessages(prev => [...prev, {
+        id: 'timeout-' + Date.now(),
+        type: 'system' as const,
+        content: `Hey! It looks like your session timed out. No worries — just type anything to get back to the welcome screen!\n\nOr reach us directly:\n- Phone: ${SUPPORT.call}\n- Email: ${SUPPORT.email}\n- Orders: Orders@medplusng.com`,
+        timestamp: new Date(),
+      }]);
+    }, SESSION_TIMEOUT_MS);
+  }, []);
+
+  useEffect(() => {
+    resetTimeout();
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [resetTimeout]);
 
   const generateUUID = () => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -281,6 +322,8 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
   };
 
   const sendMessage = async (messageText?: string) => {
+    resetTimeout();
+
     if (awaitingConfirmation) {
       // User is entering quantity
       const text = messageText || input.trim();
@@ -400,31 +443,94 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
     }
   };
 
+  // ── Escalation button detection ────────────────────────────────────────────
+  // Parses bot text for WhatsApp/Call/Email numbers and renders them as action buttons.
+  const renderEscalationButtons = (line: string, key: number) => {
+    const waMatch = line.match(/WhatsApp[:\s]+(\d{10,13})/i);
+    const callMatch = line.match(/(?:Call|Phone)[:\s]+(\d{10,13})/i);
+    const emailMatch = line.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+
+    if (!waMatch && !callMatch && !emailMatch) return null;
+
+    return (
+      <div key={`esc-${key}`} className="flex flex-wrap gap-2 my-2">
+        {waMatch && (
+          <a
+            href={`https://wa.me/234${waMatch[1].replace(/^0/, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 17.563c-.238.664-.936 1.215-1.707 1.394-.516.12-1.188.209-3.45-.74-2.895-1.218-4.766-4.073-4.91-4.264-.144-.193-1.21-1.609-1.21-3.07 0-1.461.766-2.18 1.038-2.477.273-.297.596-.372.794-.372.199 0 .397.002.57.01.26.011.44.025.636.488.242.578.821 2.001.892 2.146.07.144.116.314.023.507-.094.193-.141.313-.28.482-.14.168-.294.376-.419.505-.14.143-.284.298-.121.586.162.287.722 1.19 1.548 1.928.948.845 1.747 1.107 1.994 1.229.247.121.39.101.533-.06.144-.163.614-.716.777-.96.163-.245.325-.205.547-.123.222.082 1.408.664 1.65.785.24.121.4.183.459.284.06.1.06.576-.179 1.24z"/></svg>
+            WhatsApp {waMatch[1]}
+          </a>
+        )}
+        {callMatch && (
+          <a
+            href={`tel:${callMatch[1]}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+            Call {callMatch[1]}
+          </a>
+        )}
+        {emailMatch && (
+          <a
+            href={`mailto:${emailMatch[1]}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-800 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            Email
+          </a>
+        )}
+      </div>
+    );
+  };
+
   const formatContent = (content: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    
+    const escalationPatterns = /(?:WhatsApp|Call|Phone|Email)[:\s]+[\d@a-zA-Z._%+-]/i;
+
     return content
       .split('\n')
-      .map((line, i) => {
+      .flatMap((line, i) => {
         line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         if (line.startsWith('## ')) {
-          return <h3 key={i} className="text-lg font-semibold mt-2 mb-1">{line.substring(3)}</h3>;
+          return [<h3 key={i} className="text-lg font-semibold mt-2 mb-1">{line.substring(3)}</h3>];
         }
         if (line.startsWith('# ')) {
-          return <h2 key={i} className="text-xl font-bold mt-2 mb-1">{line.substring(2)}</h2>;
+          return [<h2 key={i} className="text-xl font-bold mt-2 mb-1">{line.substring(2)}</h2>];
         }
         if (line.startsWith('- ')) {
-          return <li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: line.substring(2) }} />;
+          return [<li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: line.substring(2) }} />];
         }
-        
+
+        // Render escalation buttons for lines with contact patterns
+        if (escalationPatterns.test(line)) {
+          const buttons = renderEscalationButtons(line, i);
+          if (buttons) {
+            return [
+              <p key={i} className="my-1 text-sm text-gray-700" dangerouslySetInnerHTML={{ __html: line }} />,
+              buttons,
+            ];
+          }
+        }
+
         // Check if line contains a URL
         const urlMatch = line.match(urlRegex);
         if (urlMatch) {
           const parts = line.split(urlRegex);
-          return (
+          // Determine label based on URL context
+          const getUrlLabel = (url: string) => {
+            if (url.includes('track-order')) return 'Track My Order';
+            if (url.includes('telemedicine')) return 'Speak to a Pharmacist';
+            if (url.includes('privacy-policy')) return 'View Return Policy';
+            return 'Open Link';
+          };
+          return [
             <div key={i} className="my-2">
               <p className="text-sm text-gray-800 mb-2">
-                {parts.map((part, idx) => 
+                {parts.map((part, idx) =>
                   part.match(urlRegex) ? null : <span key={idx}>{part}</span>
                 )}
               </p>
@@ -440,15 +546,15 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
-                    Complete Purchase
+                    {getUrlLabel(url)}
                   </a>
                 ))}
               </div>
             </div>
-          );
+          ];
         }
-        
-        return <p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: line }} />;
+
+        return [<p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: line }} />];
       });
   };
 

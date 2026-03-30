@@ -22,7 +22,11 @@ The PharmAssist Unified API is a Hono.js-based REST API that bundles the pharmac
 - [Session Cart](#session-cart)
 - [Alternatives](#alternatives)
 - [Medicine Details](#medicine-details)
+- [Bot Configuration](#bot-configuration)
+- [Store Locations](#store-locations)
+- [Store Products](#store-products)
 - [Context Engineering](#context-engineering)
+- [Bot Compliance & Safety Rules](#bot-compliance--safety-rules)
 - [SDK Integration](#sdk-integration)
 - [Error Handling](#error-handling)
 
@@ -621,6 +625,156 @@ Get detailed information about a specific medicine by its ID.
 
 ---
 
+---
+
+## Bot Configuration
+
+### GET /api/bot-config
+
+Returns contact information (support and telehealth) and key links used by the bot for escalation and navigation.
+
+**Authentication:** None required
+
+**Response:**
+
+```json
+{
+  "contact": {
+    "support_whatsapp": "08054022662",
+    "support_email": "customercare@medplusng.com",
+    "support_call": "08054022662",
+    "telehealth_whatsapp": "08187122408",
+    "telehealth_email": "telehealth@medplusng.com",
+    "telehealth_call": "08113590038"
+  },
+  "links": {
+    "privacy_policy": "https://medplusnig.com/privacy-policy",
+    "order_tracking": "https://medplusnig.com/track-order",
+    "pharmacists": "https://medplusnig.com/telemedicine"
+  }
+}
+```
+
+**SDK:**
+
+```typescript
+const config = await client.getBotConfig();
+console.log(config.contact.support_whatsapp);
+console.log(config.links.order_tracking);
+```
+
+---
+
+## Store Locations
+
+### GET /api/stores/locations
+
+Returns all MedPlus store branches with addresses and coordinates.
+
+**Authentication:** None required
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "sid": "STR001",
+      "name": "Lagos Main Store",
+      "store_address": "123 Herbert Macaulay Way, Yaba, Lagos",
+      "state": "Lagos",
+      "local_govt": "Yaba",
+      "latitude": "6.5244",
+      "longitude": "3.3792"
+    }
+  ]
+}
+```
+
+**SDK:**
+
+```typescript
+const stores = await client.getStoreLocations();
+// stores: StoreLocation[]
+```
+
+---
+
+## Store Products
+
+### GET /api/products/stores/{sid}
+
+Returns paginated product inventory for a specific store branch.
+
+**Path Parameters:**
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `sid` | Yes | Store SID (from `/api/stores/locations`) |
+
+**Query Parameters:**
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `search` | No | Filter by product name or barcode |
+| `page` | No | Page number for pagination |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "store_sid": "STR001",
+    "data": [
+      {
+        "id": 1234,
+        "product_name": "Paracetamol 500mg Tablets",
+        "barcode": "6001234567890",
+        "price": "1500.00",
+        "quantity": 150,
+        "store_name": "Lagos Main Store",
+        "store_sid": "STR001",
+        "category_name": "Pain Relief",
+        "category_slug": "pain-relief",
+        "category_id": 5,
+        "updated_at": "2026-02-16T10:30:00.000000Z"
+      }
+    ],
+    "per_page": 50,
+    "next_page_url": "...",
+    "prev_page_url": null
+  }
+}
+```
+
+**SDK:**
+
+```typescript
+const result = await client.getProductsByStore('STR001', { search: 'paracetamol' });
+// result.data: StoreProduct[]
+```
+
+### GET /api/products/stores/{sid}/{barcode}
+
+Returns a single product for a specific store and barcode.
+
+**Error Response (404):**
+
+```json
+{ "message": "The requested resource product information was not found" }
+```
+
+**SDK:**
+
+```typescript
+const product = await client.getProductByBarcode('STR001', '6001234567890');
+// product: StoreProduct
+```
+
+---
+
 ## Context Engineering
 
 The API implements several mechanisms to prevent context decay in long conversations:
@@ -664,6 +818,41 @@ Found 5 medicine(s) in a search.
 - **TTL:** 1 hour of inactivity (configurable)
 - **Cleanup:** Expired sessions are garbage-collected every 60 seconds
 - **Snapshots:** Sessions can be serialized to JSON for client-side caching and later restored via `POST /api/v1/sessions/restore`
+
+---
+
+---
+
+## Bot Compliance & Safety Rules
+
+The customer-role system prompt enforces the following hard rules. These cannot be overridden at the application layer.
+
+### Prescription Gate (RC-01)
+Any request to purchase antibiotics, controlled substances, or other prescription-only drugs without mentioning a prescription triggers a hard block. The bot responds with a mandatory "PRESCRIPTION REQUIRED" message and surfaces telehealth contact options. This rule fires even on misspelled drug names (e.g. `amoxcillin`).
+
+### Pediatric Dosage Block (RC-02)
+The bot will never provide dosage information for children. It redirects to a pharmacist via WhatsApp 08187122408.
+
+### Drug Interaction Warning (RC-04)
+Questions about mixing medications or taking drugs with alcohol result in a brief disclaimer only, followed by a mandatory "Speak to a Pharmacist" button. The customer must acknowledge before the purchase flow continues.
+
+### Pregnancy Disclaimer (RC-03)
+Any query mentioning pregnancy appends a mandatory consultation prompt for a pharmacist or doctor.
+
+### Pediatric Product Filter (PD-08)
+Queries for children (e.g. "for 5 year old") trigger a filter that excludes adult NSAIDs and Aspirin. Only pediatric-safe products are shown.
+
+### Human Handoff (ES-01)
+Phrases like "speak to a human", "real person", or "connect me" immediately surface the full agent contact panel: WhatsApp 08054022662 | Call 08054022662 | Email customercare@medplusng.com.
+
+### Return Policy (OT-04)
+The bot states medications are **non-returnable once dispensed**, and links to the full policy page.
+
+### Session Timeout (Frontend)
+The frontend chat interface has a 15-minute inactivity timeout. After timeout, the user is shown a reconnect message with support contact details.
+
+### Escalation Buttons (Frontend)
+Any bot response containing `WhatsApp:`, `Call:`, or `Email:` patterns automatically renders clickable action buttons (green WhatsApp button, blue Call button, grey Email button) in the chat UI.
 
 ---
 
@@ -725,6 +914,72 @@ function ChatScreen() {
 }
 ```
 
+### New SDK Methods (v1.1)
+
+```typescript
+// Bot config & contact info
+const config = await client.getBotConfig();
+// config.contact.support_whatsapp, config.links.order_tracking, etc.
+
+// Store locations
+const stores = await client.getStoreLocations();
+// stores: StoreLocation[] — each has sid, name, store_address, state, lat/lng
+
+// Products by store (with optional search + pagination)
+const result = await client.getProductsByStore('STR001', { search: 'paracetamol', page: 1 });
+// result.data: StoreProduct[], result.next_page_url
+
+// Single product by store + barcode
+const product = await client.getProductByBarcode('STR001', '6001234567890');
+// product: StoreProduct
+```
+
+### New SDK Types
+
+```typescript
+// BotConfig — returned by getBotConfig()
+interface BotConfig {
+  contact: {
+    support_whatsapp: string;
+    support_email: string;
+    support_call: string;
+    telehealth_whatsapp: string;
+    telehealth_email: string;
+    telehealth_call: string;
+  };
+  links: {
+    privacy_policy: string;
+    order_tracking: string;
+    pharmacists: string;
+  };
+}
+
+// StoreLocation — returned by getStoreLocations()
+interface StoreLocation {
+  sid: string;
+  name: string;
+  store_address: string;
+  state: string;
+  local_govt: string;
+  latitude: string;
+  longitude: string;
+}
+
+// StoreProduct — returned by getProductsByStore() / getProductByBarcode()
+interface StoreProduct {
+  id: number;
+  product_name: string;
+  barcode: string;
+  price: string;
+  quantity: number;
+  store_name: string;
+  store_sid: string;
+  category_name: string;
+  category_slug: string;
+  updated_at: string;
+}
+```
+
 ### Key SDK Features
 
 - **Auto session persistence:** Pass a `storage` adapter (e.g., AsyncStorage) and sessions are cached/restored automatically
@@ -732,6 +987,8 @@ function ChatScreen() {
 - **Cart sync:** Local cart state is synced with the server session, so the AI agent is always aware of cart contents
 - **Product extraction:** `extractProducts(content)` parses barcodes, prices, and names from assistant responses
 - **Connection monitoring:** `onConnectionChange` callback fires when connectivity changes
+- **Bot config access:** `getBotConfig()` fetches live contact info and links for escalation flows
+- **Store inventory:** `getStoreLocations()` + `getProductsByStore()` enable location-specific stock queries
 
 ---
 
