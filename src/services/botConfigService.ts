@@ -68,7 +68,7 @@ export class BotConfigService {
     }
 
     try {
-      const res = await fetch(`${this.baseUrl}/api/bot-config`, {
+      const res = await fetch(`${this.baseUrl}/bot-config`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),

@@ -53,7 +53,7 @@ export class StoreService {
       throw new Error('BOT_API_BASE_URL is not configured');
     }
 
-    const res = await fetch(`${this.baseUrl}/api/stores/locations`, {
+    const res = await fetch(`${this.baseUrl}/stores/locations`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(8000),
@@ -63,7 +63,7 @@ export class StoreService {
       throw new Error(`Store locations API returned ${res.status}`);
     }
 
-    const body = await res.json() as { status: string; data: StoreLocation[] };
+    const body = await res.json() as { success?: boolean; status?: string; data: StoreLocation[] };
     return body.data ?? [];
   }
 
@@ -81,7 +81,7 @@ export class StoreService {
     const query = params.toString() ? `?${params.toString()}` : '';
 
     const res = await fetch(
-      `${this.baseUrl}/api/products/stores/${encodeURIComponent(sid)}${query}`,
+      `${this.baseUrl}/products/stores/${encodeURIComponent(sid)}${query}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
@@ -93,7 +93,7 @@ export class StoreService {
       throw new Error(`Store products API returned ${res.status}`);
     }
 
-    const body = await res.json() as { status: string; data: StoreProductsResult };
+    const body = await res.json() as { success?: boolean; status?: string; data: StoreProductsResult };
     return body.data;
   }
 
@@ -103,7 +103,7 @@ export class StoreService {
     }
 
     const res = await fetch(
-      `${this.baseUrl}/api/products/stores/${encodeURIComponent(sid)}/${encodeURIComponent(barcode)}`,
+      `${this.baseUrl}/products/stores/${encodeURIComponent(sid)}/${encodeURIComponent(barcode)}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
@@ -114,7 +114,7 @@ export class StoreService {
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Store product API returned ${res.status}`);
 
-    const body = await res.json() as { status: string; data: StoreProduct };
+    const body = await res.json() as { success?: boolean; status?: string; data: StoreProduct };
     return body.data;
   }
 }

@@ -51,7 +51,7 @@ async function getBotConfig(): Promise<BotConfig> {
   if (_cachedConfig && Date.now() < _cacheExpiresAt) return _cachedConfig;
   if (!BOT_API_BASE_URL) return FALLBACK_CONFIG;
   try {
-    const res = await fetch(`${BOT_API_BASE_URL}/api/bot-config`, {
+    const res = await fetch(`${BOT_API_BASE_URL}/bot-config`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(5000),
@@ -318,12 +318,12 @@ async function callStoreApi(toolName: string, args: Record<string, unknown>): Pr
 
   try {
     if (toolName === 'get_store_locations') {
-      const res = await fetch(`${BOT_API_BASE_URL}/api/stores/locations`, {
+      const res = await fetch(`${BOT_API_BASE_URL}/stores/locations`, {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json() as { status: string; data: Array<{ sid: string; name: string; store_address: string; state: string; local_govt: string }> };
+      const body = await res.json() as { success?: boolean; data: Array<{ sid: string | number; name: string; store_address: string; state: string; local_govt: string }> };
       const locations = body.data ?? [];
       if (locations.length === 0) return 'No store locations found.';
 
@@ -349,12 +349,12 @@ async function callStoreApi(toolName: string, args: Record<string, unknown>): Pr
       if (args.page) params.set('page', String(args.page));
       const query = params.toString() ? `?${params.toString()}` : '';
 
-      const res = await fetch(`${BOT_API_BASE_URL}/api/products/stores/${encodeURIComponent(sid)}${query}`, {
+      const res = await fetch(`${BOT_API_BASE_URL}/products/stores/${encodeURIComponent(sid)}${query}`, {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json() as { status: string; data: { store_sid: string; data: Array<{ product_name: string; barcode: string; price: string; quantity: number; category_name: string }>; next_page_url: string | null } };
+      const body = await res.json() as { success?: boolean; data: { store_sid: string; data: Array<{ product_name: string; barcode: string; price: string; quantity: number; category_name: string }>; next_page_url: string | null } };
       const products = body.data?.data ?? [];
 
       if (products.length === 0) return `No products found${args.search ? ` for "${args.search}"` : ''} at store ${sid}.`;
