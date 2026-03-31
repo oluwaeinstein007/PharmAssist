@@ -44,94 +44,97 @@ export class IngestorService {
   }
 
   /**
-   * Ingest all products from the API: fetch data with pagination, generate embeddings, store in Qdrant
-   * @param maxProducts Maximum number of products to ingest (default: 20 for testing)
-   * @returns Result of the batch ingestion process
+   * Ingest all products from the API using batch embeddings and batch upserts.
+   *
+   * Key properties:
+   * - Barcode is used as the stable Qdrant point ID — re-running never creates duplicates.
+   * - Products without a barcode are skipped (logged as failures).
+   * - Embeddings and upserts happen in configurable batch sizes for maximum throughput.
+   *
+   * @param maxProducts Maximum products to fetch (0 = unlimited)
+   * @param batchSize  Number of products to embed + upsert per batch (default 50)
    */
-  async ingestAllProducts(maxProducts: number = 5): Promise<BatchIngestResult> {
+  async ingestAllProducts(
+    maxProducts: number = 0,
+    batchSize: number = 50,
+  ): Promise<BatchIngestResult> {
     try {
-      console.log(`Starting batch ingestion for all products from API (max: ${maxProducts})`);
+      console.log(`Starting batch ingestion (max: ${maxProducts || 'unlimited'}, batchSize: ${batchSize})`);
 
-      // Step 1: Fetch all products from the API with pagination
       const allProducts = await this.productsService.getAllProducts(maxProducts);
       console.log(`Fetched ${allProducts.length} products from API`);
 
       if (allProducts.length === 0) {
-        return {
-          totalProducts: 0,
-          successful: 0,
-          failed: 0,
-          results: [],
-          message: 'No products found in the API',
-        };
+        return { totalProducts: 0, successful: 0, failed: 0, results: [], message: 'No products found in the API' };
       }
 
       const results: IngestResult[] = [];
       let successCount = 0;
       let failureCount = 0;
+      const ingestedAt = new Date().toISOString();
+      const totalBatches = Math.ceil(allProducts.length / batchSize);
 
-      // Step 2: Ingest each product
-      for (let i = 0; i < allProducts.length; i++) {
-        const product = allProducts[i];
-        try {
-          console.log(`Ingesting product ${i + 1}/${allProducts.length}: ${product.product_name}`);
+      for (let offset = 0; offset < allProducts.length; offset += batchSize) {
+        const batch = allProducts.slice(offset, offset + batchSize);
+        const batchNum = Math.floor(offset / batchSize) + 1;
+        console.log(`\nBatch ${batchNum}/${totalBatches}: processing ${batch.length} products...`);
 
-          // Format product data and generate embedding
-          const productText = this.productsService.formatProductForEmbedding(product);
-          const embedding = await this.embeddingService.generateEmbedding(productText);
-
-          // Store in Qdrant
-          const timestampId = Date.now() + i;
-          const price = typeof product.price === 'string' ? parseFloat(product.price) : (product.price || 0);
-          const quantity = typeof product.quantity === 'string' ? parseInt(product.quantity, 10) : (product.quantity || 0);
-          
-          const payload = {
-            product_name: String(product.product_name || ''),
-            barcode: String(product.barcode || ''),
-            price: isNaN(price) ? 0 : price,
-            quantity: isNaN(quantity) ? 0 : quantity,
-            category_name: String(product.category_name || ''),
-            category_slug: String(product.category_slug || ''),
-            category_id: parseInt(String(product.category_id), 10) || 0,
-            price_updated_at: product.price_updated_at || new Date().toISOString(),
-            ingested_at: new Date().toISOString(),
-          };
-
-          console.log(`  Payload for ${product.product_name}: barcode=${payload.barcode}, price=${payload.price}, qty=${payload.quantity}`);
-
-          await this.qdrantService.addChunk(String(timestampId), embedding, payload);
-          console.log(`Product ${i + 1}/${allProducts.length} stored in Qdrant: ${product.product_name}`);
-
-          results.push({
-            id: String(timestampId),
-            productName: product.product_name,
-            success: true,
-            message: `Successfully ingested: ${product.product_name}`,
-          });
-
-          successCount++;
-
-          // Add delay to avoid overwhelming the embedding service
-          if (i < allProducts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`Error ingesting ${product.product_name}: ${message}`);
-
-          results.push({
-            id: `unknown_${Date.now()}`,
-            productName: product.product_name,
-            success: false,
-            message: `Failed to ingest: ${message}`,
-          });
-
+        // Products without a barcode cannot be deduplicated — skip them
+        const validBatch = batch.filter(p => p.barcode);
+        for (const p of batch.filter(pp => !pp.barcode)) {
+          console.warn(`  Skipping "${p.product_name}": missing barcode`);
+          results.push({ id: '', productName: p.product_name, success: false, message: 'Skipped: missing barcode' });
           failureCount++;
+        }
+
+        if (validBatch.length === 0) continue;
+
+        try {
+          // Generate all embeddings for this batch in one API call
+          const texts = validBatch.map(p => this.productsService.formatProductForEmbedding(p));
+          const embeddings = await this.embeddingService.generateBatchEmbeddings(texts);
+
+          // Build Qdrant points — barcode is the dedup key
+          const points = validBatch.map((product, i) => {
+            const price = typeof product.price === 'string' ? parseFloat(product.price) : (product.price || 0);
+            const quantity = typeof product.quantity === 'string' ? parseInt(product.quantity, 10) : (product.quantity || 0);
+            return {
+              barcode: String(product.barcode),
+              embedding: embeddings[i],
+              payload: {
+                product_name: String(product.product_name || ''),
+                barcode: String(product.barcode),
+                price: isNaN(price) ? 0 : price,
+                quantity: isNaN(quantity) ? 0 : quantity,
+                category_name: String(product.category_name || ''),
+                category_slug: String(product.category_slug || ''),
+                category_id: parseInt(String(product.category_id), 10) || 0,
+                price_updated_at: product.price_updated_at || ingestedAt,
+                ingested_at: ingestedAt,
+              },
+            };
+          });
+
+          // Upsert the entire batch to Qdrant in one request
+          await this.qdrantService.addChunksBatch(points);
+
+          for (const product of validBatch) {
+            results.push({ id: String(product.barcode), productName: product.product_name, success: true, message: `Ingested: ${product.product_name}` });
+            successCount++;
+          }
+
+          console.log(`  Batch ${batchNum}/${totalBatches} done — ${validBatch.length} upserted`);
+        } catch (batchError) {
+          const message = batchError instanceof Error ? batchError.message : 'Unknown error';
+          console.error(`  Batch ${batchNum} failed: ${message}`);
+          for (const product of validBatch) {
+            results.push({ id: String(product.barcode), productName: product.product_name, success: false, message });
+            failureCount++;
+          }
         }
       }
 
-      console.log(`\nBatch ingestion completed: ${successCount}/${allProducts.length} successful`);
-
+      console.log(`\nIngestion complete: ${successCount} successful, ${failureCount} failed`);
       return {
         totalProducts: allProducts.length,
         successful: successCount,
@@ -142,38 +145,32 @@ export class IngestorService {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error in batch ingestion: ${message}`);
-      return {
-        totalProducts: 0,
-        successful: 0,
-        failed: 0,
-        results: [],
-        message: `Batch ingestion failed: ${message}`,
-      };
+      return { totalProducts: 0, successful: 0, failed: 0, results: [], message: `Batch ingestion failed: ${message}` };
     }
   }
 
   /**
-   * Ingest a product by search query: fetch data, generate embedding, store in Qdrant
-   * @param query The product name or search query
-   * @returns Result of the ingestion process
+   * Ingest a single product by search query: fetch, embed, and upsert to Qdrant.
+   * Uses barcode as the stable point ID to prevent duplicates.
    */
   async ingestProductByQuery(query: string): Promise<IngestResult> {
     try {
       console.log(`Starting ingestion for query: ${query}`);
 
-      // Step 1: Search for product
       const product = await this.productsService.searchProduct(query);
       console.log(`Product found: ${product.product_name}`);
 
-      // Step 2: Format product data and generate embedding
+      if (!product.barcode) {
+        return { id: '', productName: product.product_name, success: false, message: 'Skipped: missing barcode' };
+      }
+
       const productText = this.productsService.formatProductForEmbedding(product);
       const embedding = await this.embeddingService.generateEmbedding(productText);
-      console.log(`Embedding generated for ${product.product_name}`);
 
-      // Step 3: Store in Qdrant
-      const id = `${product.product_name}_${Date.now()}`;
+      const barcode = String(product.barcode);
       const payload = {
         product_name: product.product_name,
+        barcode,
         price: product.price,
         quantity: product.quantity,
         category_name: product.category_name,
@@ -183,24 +180,14 @@ export class IngestorService {
         ingested_at: new Date().toISOString(),
       };
 
-      await this.qdrantService.addChunk(id, embedding, payload);
-      console.log(`Product stored in Qdrant: ${id}`);
+      await this.qdrantService.addChunk(barcode, embedding, payload);
+      console.log(`Product stored in Qdrant with barcode ID: ${barcode}`);
 
-      return {
-        id,
-        productName: product.product_name,
-        success: true,
-        message: `Successfully ingested product: ${product.product_name}`,
-      };
+      return { id: barcode, productName: product.product_name, success: true, message: `Successfully ingested: ${product.product_name}` };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error ingesting product by query: ${message}`);
-      return {
-        id: `unknown_${Date.now()}`,
-        productName: 'Unknown',
-        success: false,
-        message: `Failed to ingest product: ${message}`,
-      };
+      return { id: '', productName: 'Unknown', success: false, message: `Failed to ingest product: ${message}` };
     }
   }
 }

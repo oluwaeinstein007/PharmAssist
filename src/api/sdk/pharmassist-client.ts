@@ -77,6 +77,47 @@ export interface Medicine {
   score: number;
 }
 
+export interface BotConfig {
+  contact: {
+    support_whatsapp: string;
+    support_email: string;
+    support_call: string;
+    telehealth_whatsapp: string;
+    telehealth_email: string;
+    telehealth_call: string;
+  };
+  links: {
+    privacy_policy: string;
+    order_tracking: string;
+    pharmacists: string;
+  };
+}
+
+export interface StoreLocation {
+  sid: string;
+  name: string;
+  store_address: string;
+  state: string;
+  local_govt: string;
+  latitude: string;
+  longitude: string;
+}
+
+export interface StoreProduct {
+  id: number;
+  product_name: string;
+  barcode: string;
+  price: string;
+  dept: number;
+  quantity: number;
+  store_name: string;
+  store_sid: string;
+  category_name: string;
+  category_slug: string;
+  category_id: number;
+  updated_at: string;
+}
+
 export interface SearchResult {
   query: string;
   medicines: Medicine[];
@@ -446,6 +487,57 @@ export class PharmAssistClient {
 
   async getAlternatives(medicineId: string): Promise<ApiResponse> {
     return this.request('GET', `/api/v1/alternatives/${encodeURIComponent(medicineId)}`);
+  }
+
+  // ── Bot config (contact info + links) ─────────────────────────────────
+
+  async getBotConfig(): Promise<BotConfig> {
+    const res = await this.request<BotConfig>('GET', '/api/bot-config');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'Failed to fetch bot config');
+    }
+    return res.data;
+  }
+
+  // ── Store locations ───────────────────────────────────────────────────
+
+  async getStoreLocations(): Promise<StoreLocation[]> {
+    const res = await this.request<{ status: string; data: StoreLocation[] }>('GET', '/api/stores/locations');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'Failed to fetch store locations');
+    }
+    return res.data.data;
+  }
+
+  // ── Products by store ─────────────────────────────────────────────────
+
+  async getProductsByStore(
+    sid: string,
+    options: { search?: string; page?: number } = {},
+  ): Promise<{ store_sid: string; data: StoreProduct[]; next_page_url: string | null }> {
+    const params = new URLSearchParams();
+    if (options.search) params.set('search', options.search);
+    if (options.page) params.set('page', String(options.page));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await this.request<{ status: string; data: { store_sid: string; data: StoreProduct[]; next_page_url: string | null } }>(
+      'GET',
+      `/api/products/stores/${encodeURIComponent(sid)}${query}`,
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'Failed to fetch products for store');
+    }
+    return res.data.data;
+  }
+
+  async getProductByBarcode(sid: string, barcode: string): Promise<StoreProduct> {
+    const res = await this.request<{ status: string; data: StoreProduct }>(
+      'GET',
+      `/api/products/stores/${encodeURIComponent(sid)}/${encodeURIComponent(barcode)}`,
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'Product not found');
+    }
+    return res.data.data;
   }
 
   // ── New conversation ──────────────────────────────────────────────────

@@ -24,6 +24,9 @@ export type {
   CartResult,
   StreamEvent,
   StreamCallbacks,
+  BotConfig,
+  StoreLocation,
+  StoreProduct,
 } from './pharmassist-client.js';
 
 // React hook — only import in React/RN environments
