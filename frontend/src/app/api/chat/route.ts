@@ -57,7 +57,8 @@ async function getBotConfig(): Promise<BotConfig> {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json() as BotConfig;
+    const json = await res.json() as { success?: boolean; data?: BotConfig } | BotConfig;
+    const data = (json as { data?: BotConfig }).data ?? (json as BotConfig);
     _cachedConfig = data;
     _cacheExpiresAt = Date.now() + 5 * 60 * 1000;
     return data;
@@ -330,10 +331,10 @@ async function callStoreApi(toolName: string, args: Record<string, unknown>): Pr
       const filter = args.location ? String(args.location).toLowerCase() : '';
       const filtered = filter
         ? locations.filter((s) =>
-            s.state.toLowerCase().includes(filter) ||
-            s.local_govt.toLowerCase().includes(filter) ||
-            s.name.toLowerCase().includes(filter) ||
-            s.store_address.toLowerCase().includes(filter),
+            (s.state?.toLowerCase() ?? '').includes(filter) ||
+            (s.local_govt?.toLowerCase() ?? '').includes(filter) ||
+            (s.name?.toLowerCase() ?? '').includes(filter) ||
+            (s.store_address?.toLowerCase() ?? '').includes(filter),
           )
         : locations;
 
@@ -403,9 +404,10 @@ async function processWithGemini(
     systemInstruction: `You are PharmAssist, an AI pharmacy assistant for MedPlus customers. Help customers find and order medicines easily.
 
 CORE RESPONSIBILITIES:
-1. Search for medicines when users ask (use search_medicines)
+1. Search for medicines when users ask (use search_medicines) — but NOT for store/location queries
 2. Display search results with price and availability
 3. Create carts when users want to order (use create_cart)
+4. Find store locations when users ask about stores (use get_store_locations)
 
 FRONTEND WORKFLOW:
 - The frontend will automatically extract barcodes from your search results
@@ -463,10 +465,22 @@ MALARIA (PD-01, UC-01):
 - Angry/frustrated: Empathize first, then offer human handoff.
 
 === STORE LOCATIONS & STOCK ===
-- When asked where stores are: call get_store_locations (optionally with state filter).
-- When asked if a product is available at a specific store: call get_store_locations first to get the store SID, then call search_store_products with that SID.
-- [internal:sid=...] tags in store results contain the store ID — use them silently with search_store_products.
-- Restock: "Contact our team for restock notifications: WhatsApp ${contact.support_whatsapp}"
+
+FINDING STORES (SA-01):
+- When asked about store locations, call get_store_locations with the location= parameter set to the area mentioned (e.g., "Yaba", "Lagos", "Abuja").
+- NEVER show [internal:sid=...] tags to the customer.
+
+PRODUCT AVAILABILITY AT A SPECIFIC LOCATION (SA-02) — CRITICAL FLOW:
+- When asked if a product is available in a location (e.g., "What stores in Lagos stock amoxicillin?", "Do you have ibuprofen in Yaba?"), follow this EXACT flow WITHOUT asking the customer anything:
+  1. Call get_store_locations(location="<area>") to find matching stores
+  2. Extract the [internal:sid=...] value(s) from the results SILENTLY
+  3. Immediately call search_store_products(store_sid=<sid>, search="<product>") for the most relevant store(s)
+  4. Present the product results with store name, price, and stock status
+- Do NOT call search_medicines for store availability queries — always use get_store_locations + search_store_products.
+- Do NOT ask the customer which store — pick the most relevant one(s) automatically.
+
+RESTOCK (SA-03):
+- Respond: "Contact our team: WhatsApp ${contact.support_whatsapp} | Call ${contact.support_call}"
 
 === PRICING ===
 - Discounts/promos: No real-time data — escalate to agents.

@@ -343,10 +343,10 @@ const getStoreLocationsTool: ToolDefinition = {
     const filter = args.location ? String(args.location).toLowerCase() : '';
     const filtered = filter
       ? locations.filter((s) =>
-          s.state.toLowerCase().includes(filter) ||
-          s.local_govt.toLowerCase().includes(filter) ||
-          s.name.toLowerCase().includes(filter) ||
-          s.store_address.toLowerCase().includes(filter),
+          (s.state?.toLowerCase() ?? '').includes(filter) ||
+          (s.local_govt?.toLowerCase() ?? '').includes(filter) ||
+          (s.name?.toLowerCase() ?? '').includes(filter) ||
+          (s.store_address?.toLowerCase() ?? '').includes(filter),
         )
       : locations;
 

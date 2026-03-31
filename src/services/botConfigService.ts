@@ -78,7 +78,8 @@ export class BotConfigService {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = (await res.json()) as BotConfig;
+      const json = (await res.json()) as { success?: boolean; data?: BotConfig } | BotConfig;
+      const data = (json as { data?: BotConfig }).data ?? (json as BotConfig);
       this.cachedConfig = data;
       this.cacheExpiresAt = Date.now() + CACHE_TTL_MS;
       console.log('[BotConfigService] Config loaded from API');
