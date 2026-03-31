@@ -1,6 +1,6 @@
 # PharmAssist Feature Status & External API Dependencies
 
-**Last Updated:** 2026-03-30
+**Last Updated:** 2026-03-31
 
 This document tracks every feature from the product requirements, its current implementation status, and which external APIs are needed from the backend/infrastructure team to unblock remaining work.
 
@@ -28,8 +28,8 @@ This document tracks every feature from the product requirements, its current im
 | 1.3 | View product information and usage guidance | **PARTIAL** | `get_medicine_details` returns basic fields (name, price, qty, category). **Missing:** dosage, usage instructions, side effects, manufacturer, expiry. These fields are not in the Qdrant payload or the products API response. |
 | 1.4 | Upload prescriptions (image or PDF) | **NOT BUILT** | Needs: file upload endpoint, cloud storage (S3/GCS), OCR/vision model integration (e.g., Gemini Vision for prescription parsing). |
 | 1.5 | Refill previous prescriptions | **NOT BUILT** | Needs: prescription history API, customer-prescription linking, refill workflow. |
-| 1.6 | Use customer location for nearby store availability | **PARTIAL** | `GET /api/stores/locations` is now integrated in the SDK (`getStoreLocations()`). `getProductsByStore(sid, { search })` enables per-store product search. Bot escalates location queries to store contacts via WhatsApp/Call. **Missing:** geolocation matching (nearest store by lat/lng). |
-| 1.7 | Confirm if product is available in a specific store | **PARTIAL** | `GET /api/products/stores/{sid}?search=...` and `GET /api/products/stores/{sid}/{barcode}` are now in SDK. Bot now escalates per-store availability queries to direct store contacts (WhatsApp 08054022662). |
+| 1.6 | Use customer location for nearby store availability | **PARTIAL** | `GET /api/stores/locations` integrated in SDK and exposed as bot tool `get_store_locations`. Agent can list all stores or filter by state. Bot config contact numbers injected dynamically from `/api/bot-config`. **Missing:** geolocation matching (nearest store by lat/lng). |
+| 1.7 | Confirm if product is available in a specific store | **PARTIAL** | `GET /api/products/stores/{sid}?search=...` exposed as bot tool `search_store_products`. Agent automatically chains `get_store_locations` → `search_store_products` when asked about per-store stock. **Missing:** barcode-level single-product lookup tool (API exists; tool not yet added to registry). |
 
 ### Orders & Payments
 
@@ -148,7 +148,9 @@ These are cross-cutting capabilities that support the features above:
 | Rate Limiting | **DONE** | Global + per-route rate limiters. |
 | Error Handling | **DONE** | Centralized error handler with typed error codes. |
 | API Documentation | **DONE** | `docs/API.md` with full endpoint reference. Updated 2026-03-30 with Bot Config, Store Locations, Store Products, Bot Compliance section, and new SDK methods. |
-| Bot Config API (`/api/bot-config`) | **DONE** | Returns live contact info and links. Integrated in SDK via `getBotConfig()`. Used by system prompt for all escalation flows. |
+| Bot Config API (`/api/bot-config`) | **DONE** | Returns live contact info and links. Cached with 5-min TTL in `BotConfigService`. Injected at runtime into customer system prompt via `buildCustomerSystemPrompt(config)` in `pharmacyAgent.ts`. Frontend proxy also fetches live config per `getBotConfig()`. All contact numbers in escalation flows now sourced from this API. |
+| Store Location Bot Tool (`get_store_locations`) | **DONE** | `get_store_locations` added to `toolRegistry.ts`. Calls `StoreService.getStoreLocations()`. Supports optional state filter. Returns `[internal:sid=...]` tags for chaining with `search_store_products`. Available to all roles. |
+| Store Product Bot Tool (`search_store_products`) | **DONE** | `search_store_products` added to `toolRegistry.ts`. Calls `StoreService.getProductsByStore(sid, { search, page })`. Agent chains this after `get_store_locations` for per-store availability queries. Available to all roles. |
 | Session Timeout (Frontend) | **DONE** | 15-minute inactivity detection in `Chat.tsx`. Shows reconnect message with support contacts. |
 | Escalation Button Rendering (Frontend) | **DONE** | `Chat.tsx` now auto-renders WhatsApp / Call / Email action buttons whenever bot response contains contact patterns. URL labels are context-aware (Track Order, Speak to Pharmacist, etc.). |
 | Bot Compliance Rules (Customer Role) | **DONE** | Hard rules enforced in system prompt: RC-01 prescription gate, RC-02 pediatric block, RC-03 pregnancy warning, RC-04 drug interaction disclaimer, PD-08 pediatric product filter, ES-01 human handoff, OT-04 non-returnable meds policy, SA/PP/CA/OT escalation flows. |
@@ -237,4 +239,4 @@ These services exist in code but do NOT call any real backend. They store data i
 | **Admin: Compliance & Records** | 3 | 0 | 0 | 0 | 3 |
 | **TOTAL** | **45** | **6** | **8** | **0** | **31** |
 
-**Bottom line (updated 2026-03-30):** 6 features are fully done, 8 are partially done (up from 5 — improved by store location/product SDK integration, human handoff escalation UI, and bot compliance rules), and 31 remain blocked waiting for external APIs listed in Section 4.
+**Bottom line (updated 2026-03-31):** 6 features are fully done, 8 are partially done (up from 5 — store location/product bot tools added, live bot config injected into system prompt, human handoff escalation UI, and bot compliance rules), and 31 remain blocked waiting for external APIs listed in Section 4.

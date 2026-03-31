@@ -2,7 +2,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getGeminiDeclarations, executeTool } from './toolRegistry.js';
 import { conversationStore } from '../sessions/conversationStore.js';
 import { ApiError, ErrorCode } from '../types/errors.js';
-import { getSystemPromptForRole, getAllowedToolsForRole } from '../rbac/roles.js';
+import { getSystemPromptForRole, getAllowedToolsForRole, buildCustomerSystemPrompt } from '../rbac/roles.js';
+import { botConfigService } from '../../services/botConfigService.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.0-flash';
@@ -191,7 +192,15 @@ export async function processChat(
   // Resolve role-scoped configuration
   const userRole = role || 'customer';
   const allowedTools = getAllowedToolsForRole(userRole);
-  const systemInstruction = getSystemPromptForRole(userRole);
+
+  // Inject live bot config into customer system prompt so contact info is always fresh
+  let systemInstruction: string;
+  if (userRole === 'customer') {
+    const botConfig = await botConfigService.getConfig();
+    systemInstruction = buildCustomerSystemPrompt(botConfig);
+  } else {
+    systemInstruction = getSystemPromptForRole(userRole);
+  }
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
@@ -372,7 +381,15 @@ export async function* processChatStream(
   // Resolve role-scoped configuration
   const userRole = role || 'customer';
   const allowedTools = getAllowedToolsForRole(userRole);
-  const systemInstruction = getSystemPromptForRole(userRole);
+
+  // Inject live bot config into customer system prompt so contact info is always fresh
+  let systemInstruction: string;
+  if (userRole === 'customer') {
+    const botConfig = await botConfigService.getConfig();
+    systemInstruction = buildCustomerSystemPrompt(botConfig);
+  } else {
+    systemInstruction = getSystemPromptForRole(userRole);
+  }
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,

@@ -105,6 +105,8 @@ curl -X POST http://localhost:5050/api/v1/chat \
 | `create_cart` | Yes | Yes | Yes |
 | `get_medicine_details` | Yes | Yes | Yes |
 | `find_alternatives` | Yes | Yes | Yes |
+| `get_store_locations` | Yes | Yes | Yes |
+| `search_store_products` | Yes | Yes | Yes |
 | `log_purchase` | No | Yes | Yes |
 | `notify_admin` | No | Yes | Yes |
 
@@ -663,6 +665,11 @@ console.log(config.contact.support_whatsapp);
 console.log(config.links.order_tracking);
 ```
 
+**Live Injection:** The `/api/bot-config` response is automatically fetched by `BotConfigService` (with 5-minute TTL cache and fallback to `FALLBACK_BOT_CONFIG`) and injected into the customer system prompt at runtime via `buildCustomerSystemPrompt(config)`. All contact numbers and links in bot escalation flows (RC-01, ES-01, SA-01, OT-04, etc.) come from this API — they are never hardcoded in the running prompt.
+
+**Server env var:** Set `BOT_API_BASE_URL` (or `UNIFIED_PRODUCTS_BASE_URL`) to enable live fetch.
+**Frontend env var:** Set `BOT_API_BASE_URL` (or `NEXT_PUBLIC_API_URL`) to enable live fetch in `frontend/src/app/api/chat/route.ts`.
+
 ---
 
 ## Store Locations
@@ -698,6 +705,8 @@ Returns all MedPlus store branches with addresses and coordinates.
 const stores = await client.getStoreLocations();
 // stores: StoreLocation[]
 ```
+
+**Bot Tool:** `get_store_locations` — the chat agent calls this tool automatically when a customer asks where MedPlus stores are or wants to find stores by state. The `sid` field in the result is stored as an `[internal:sid=...]` tag for use with `search_store_products`.
 
 ---
 
@@ -755,6 +764,8 @@ Returns paginated product inventory for a specific store branch.
 const result = await client.getProductsByStore('STR001', { search: 'paracetamol' });
 // result.data: StoreProduct[]
 ```
+
+**Bot Tool:** `search_store_products` — the chat agent calls this tool when a customer asks whether a specific product is available at a particular store. The agent first calls `get_store_locations` to find the store SID, then calls `search_store_products` with that SID and the product query.
 
 ### GET /api/products/stores/{sid}/{barcode}
 
