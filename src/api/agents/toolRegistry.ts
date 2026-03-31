@@ -320,13 +320,13 @@ const getStoreLocationsTool: ToolDefinition = {
   geminiDeclaration: {
     name: 'get_store_locations',
     description:
-      'Get a list of all MedPlus store locations with addresses and states. Use this when a customer asks where MedPlus stores are located, which stores are near them, or wants to know available pickup locations.',
+      'Get MedPlus store locations. Use this when a customer asks where stores are, or when they ask if a product is available in a specific area/store. After getting locations, if the customer asked about a product, IMMEDIATELY call search_store_products for the matching store(s) — do NOT ask the customer to choose.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        state: {
+        location: {
           type: SchemaType.STRING,
-          description: 'Optional: filter stores by state name (e.g., "Lagos", "Abuja"). Leave empty to get all stores.',
+          description: 'Optional: any location term to filter by — state, LGA, area, or store name (e.g., "Yaba", "Lagos", "Abuja", "Victoria Island"). Leave empty to get all stores.',
         } as Schema,
       },
       required: [],
@@ -340,18 +340,23 @@ const getStoreLocationsTool: ToolDefinition = {
       return 'No store locations found.';
     }
 
-    const stateFilter = args.state ? String(args.state).toLowerCase() : '';
-    const filtered = stateFilter
-      ? locations.filter((s) => s.state.toLowerCase().includes(stateFilter))
+    const filter = args.location ? String(args.location).toLowerCase() : '';
+    const filtered = filter
+      ? locations.filter((s) =>
+          s.state.toLowerCase().includes(filter) ||
+          s.local_govt.toLowerCase().includes(filter) ||
+          s.name.toLowerCase().includes(filter) ||
+          s.store_address.toLowerCase().includes(filter),
+        )
       : locations;
 
     if (filtered.length === 0) {
-      return `No stores found in "${args.state}". Here are all available locations:\n${locations.map((s) => `- ${s.name} (${s.state})`).join('\n')}`;
+      return `No stores found matching "${args.location}". Available states: ${[...new Set(locations.map((s) => s.state))].join(', ')}`;
     }
 
-    let response = `Found ${filtered.length} MedPlus store(s)${stateFilter ? ` in ${args.state}` : ''}:\n\n`;
+    let response = `Found ${filtered.length} MedPlus store(s)${filter ? ` matching "${args.location}"` : ''}:\n\n`;
     filtered.forEach((store, index) => {
-      response += `${index + 1}. **${store.name}**\n   Address: ${store.store_address}\n   State: ${store.state} | LGA: ${store.local_govt}\n   [internal:sid=${store.sid}]\n`;
+      response += `${index + 1}. **${store.name}**\n   Address: ${store.store_address}\n   LGA: ${store.local_govt}, ${store.state}\n   [internal:sid=${store.sid}]\n`;
     });
     return response;
   },

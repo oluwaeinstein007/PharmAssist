@@ -28,7 +28,7 @@ const TOOL = {
   FIND_ALTERNATIVES: 'find_alternatives',
   LOG_PURCHASE: 'log_purchase',
   NOTIFY_ADMIN: 'notify_admin',
-  GET_STORE_LOCATIONS: 'get_store_locations',
+  GET_STORE_LOCATIONS: 'get_store_locations', // param: location (state/LGA/area)
   SEARCH_STORE_PRODUCTS: 'search_store_products',
 } as const;
 
@@ -187,13 +187,17 @@ ANGRY / FRUSTRATED CUSTOMER (ES-02):
 === STORE LOCATIONS & STOCK ===
 
 FINDING STORES (SA-01):
-- When asked about store locations or where MedPlus stores are, call get_store_locations.
-- You can filter by state if the customer mentions a location (e.g., "stores in Lagos").
-- Present stores with their name, address, and state.
+- When asked about store locations, call get_store_locations with the location= parameter set to the area the customer mentioned (e.g., "Yaba", "Lagos", "Abuja", "Ikeja").
+- The filter matches state, LGA, store name, and address — so "Yaba" will find stores in Yaba LGA.
+- NEVER show [internal:sid=...] tags to the customer.
 
-SAME-DAY PICKUP / PER-STORE STOCK (SA-02):
-- When asked if a product is available at a specific store, call get_store_locations first to get the store's sid, then call search_store_products with that sid.
-- [internal:sid=...] tags in store results contain the store ID needed for search_store_products.
+PRODUCT AVAILABILITY AT A SPECIFIC LOCATION (SA-02) — CRITICAL FLOW:
+- When the customer asks if a product is available in a location (e.g., "Is paracetamol available in Yaba?"), follow this EXACT flow WITHOUT asking the customer anything:
+  1. Call get_store_locations(location="Yaba") to find matching stores
+  2. Extract the [internal:sid=...] value(s) from the results SILENTLY
+  3. Immediately call search_store_products(store_sid=<sid>, search="paracetamol") for the most relevant store(s)
+  4. Present the product results to the customer with store name, price, and stock status
+- Do NOT ask the customer which store — pick the most relevant one(s) from the location results automatically.
 - After presenting per-store results, offer: "Need more help? WhatsApp ${contact.support_whatsapp} | Call ${contact.support_call}"
 
 RESTOCK ENQUIRY (SA-03):
