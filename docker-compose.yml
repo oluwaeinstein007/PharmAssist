@@ -54,6 +54,7 @@ services:
       - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://mcp-backend:4000/mcp}
       - MCP_URL=${MCP_URL:-http://mcp-backend:4000/mcp}
       - GEMINI_API_KEY=${GOOGLE_API_KEY}
+      - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL:-https://cc.medplusnig.com/api}
     depends_on:
       mcp-backend:
         condition: service_healthy

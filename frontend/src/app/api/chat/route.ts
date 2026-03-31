@@ -8,7 +8,7 @@ import {
 
 const MCP_URL = process.env.MCP_URL || 'http://localhost:4000/mcp';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const BOT_API_BASE_URL = (process.env.BOT_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+const PRODUCTS_API_BASE_URL = (process.env.UNIFIED_PRODUCTS_BASE_URL || '').replace(/\/$/, '');
 
 // ── Bot config (fetched live, falls back to hardcoded defaults) ─────────────
 
@@ -49,9 +49,9 @@ let _cacheExpiresAt = 0;
 
 async function getBotConfig(): Promise<BotConfig> {
   if (_cachedConfig && Date.now() < _cacheExpiresAt) return _cachedConfig;
-  if (!BOT_API_BASE_URL) return FALLBACK_CONFIG;
+  if (!PRODUCTS_API_BASE_URL) return FALLBACK_CONFIG;
   try {
-    const res = await fetch(`${BOT_API_BASE_URL}/bot-config`, {
+    const res = await fetch(`${PRODUCTS_API_BASE_URL}/bot-config`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(5000),
@@ -313,13 +313,13 @@ function mapArguments(toolName: string, args: Record<string, unknown>): Record<s
 }
 
 async function callStoreApi(toolName: string, args: Record<string, unknown>): Promise<string> {
-  if (!BOT_API_BASE_URL) {
+  if (!PRODUCTS_API_BASE_URL) {
     return 'Store locations service is temporarily unavailable. Please contact us: WhatsApp 08054022662 | Call 08054022662';
   }
 
   try {
     if (toolName === 'get_store_locations') {
-      const res = await fetch(`${BOT_API_BASE_URL}/stores/locations`, {
+      const res = await fetch(`${PRODUCTS_API_BASE_URL}/stores/locations`, {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(8000),
       });
@@ -357,7 +357,7 @@ async function callStoreApi(toolName: string, args: Record<string, unknown>): Pr
       if (args.page) params.set('page', String(args.page));
       const query = params.toString() ? `?${params.toString()}` : '';
 
-      const res = await fetch(`${BOT_API_BASE_URL}/products/stores/${encodeURIComponent(sid)}${query}`, {
+      const res = await fetch(`${PRODUCTS_API_BASE_URL}/products/stores/${encodeURIComponent(sid)}${query}`, {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(8000),
       });
@@ -563,11 +563,11 @@ Be friendly, clear, and let the frontend handle the UI interactions.`,
   }
   
   const text = result.text();
-  if (!text || text.trim() === '') {
-    return 'I apologize, but I could not generate a response. Please try rephrasing your question.';
-  }
-  
-  return text;
+  const finalText = text && text.trim()
+    ? text.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim()
+    : 'I apologize, but I could not generate a response. Please try rephrasing your question.';
+
+  return finalText;
 }
 
 export async function POST(request: NextRequest) {

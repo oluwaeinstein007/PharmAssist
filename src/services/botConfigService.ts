@@ -49,12 +49,7 @@ export class BotConfigService {
   private cacheExpiresAt = 0;
 
   constructor() {
-    // BOT_API_BASE_URL takes priority; falls back to UNIFIED_PRODUCTS_BASE_URL
-    this.baseUrl = (
-      process.env.BOT_API_BASE_URL ||
-      process.env.UNIFIED_PRODUCTS_BASE_URL ||
-      ''
-    ).replace(/\/$/, '');
+    this.baseUrl = (process.env.UNIFIED_PRODUCTS_BASE_URL || '').replace(/\/$/, '');
   }
 
   async getConfig(): Promise<BotConfig> {
@@ -63,7 +58,7 @@ export class BotConfigService {
     }
 
     if (!this.baseUrl) {
-      console.warn('[BotConfigService] BOT_API_BASE_URL not set — using fallback config');
+      console.warn('[BotConfigService] UNIFIED_PRODUCTS_BASE_URL not set — using fallback config');
       return FALLBACK_BOT_CONFIG;
     }
 

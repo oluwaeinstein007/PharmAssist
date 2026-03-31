@@ -41,16 +41,12 @@ export class StoreService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.baseUrl = (
-      process.env.BOT_API_BASE_URL ||
-      process.env.UNIFIED_PRODUCTS_BASE_URL ||
-      ''
-    ).replace(/\/$/, '');
+    this.baseUrl = (process.env.UNIFIED_PRODUCTS_BASE_URL || '').replace(/\/$/, '');
   }
 
   async getStoreLocations(): Promise<StoreLocation[]> {
     if (!this.baseUrl) {
-      throw new Error('BOT_API_BASE_URL is not configured');
+      throw new Error('UNIFIED_PRODUCTS_BASE_URL is not configured');
     }
 
     const res = await fetch(`${this.baseUrl}/stores/locations`, {
@@ -72,7 +68,7 @@ export class StoreService {
     options: { search?: string; page?: number } = {},
   ): Promise<StoreProductsResult> {
     if (!this.baseUrl) {
-      throw new Error('BOT_API_BASE_URL is not configured');
+      throw new Error('UNIFIED_PRODUCTS_BASE_URL is not configured');
     }
 
     const params = new URLSearchParams();
@@ -99,7 +95,7 @@ export class StoreService {
 
   async getProductByBarcode(sid: string, barcode: string): Promise<StoreProduct | null> {
     if (!this.baseUrl) {
-      throw new Error('BOT_API_BASE_URL is not configured');
+      throw new Error('UNIFIED_PRODUCTS_BASE_URL is not configured');
     }
 
     const res = await fetch(
