@@ -2,7 +2,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getGeminiDeclarations, executeTool } from './toolRegistry.js';
 import { conversationStore } from '../sessions/conversationStore.js';
 import { ApiError, ErrorCode } from '../types/errors.js';
-import { getSystemPromptForRole, getAllowedToolsForRole } from '../rbac/roles.js';
+import { getSystemPromptForRole, getAllowedToolsForRole, buildCustomerSystemPrompt } from '../rbac/roles.js';
+import { botConfigService } from '../../services/botConfigService.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.0-flash';
@@ -21,12 +22,25 @@ export interface MedicineSearchResult {
   category: string;
 }
 
+export interface StoreProductResult {
+  storeName?: string;
+  storeSid: string;
+  productName: string;
+  barcode: string;
+  price: string;
+  quantity: number;
+  inStock: boolean;
+  category: string;
+}
+
 export interface AgentResult {
   response: string;
   conversationId: string;
   toolsUsed: string[];
   /** Structured medicine results from the last search_medicines call — for frontend rendering */
   searchResults?: MedicineSearchResult[];
+  /** Structured per-store product results from search_store_products — for frontend rendering */
+  storeResults?: StoreProductResult[];
   /** Session snapshot for the client to cache (mobile restore) */
   sessionState: {
     turnCount: number;
@@ -70,6 +84,39 @@ function parseSearchResults(toolResult: string): MedicineSearchResult[] {
   }
 
   return medicines;
+}
+
+// ── Store result parser ──────────────────────────────────────────────────────
+// Extracts structured store product data from search_store_products tool result.
+
+function parseStoreResults(toolResult: string, storeSid: string): StoreProductResult[] {
+  const results: StoreProductResult[] = [];
+  const blocks = toolResult.split(/\n(?=\d+\. \*\*)/);
+  for (const block of blocks) {
+    const nameMatch = block.match(/\d+\. \*\*(.+?)\*\*/);
+    const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
+    const priceMatch = block.match(/Price: ₦([\d.,]+)/);
+    const statusMatch = block.match(/Status: ([\w ]+)/);
+    const qtyMatch = block.match(/\((\d+) units\)/);
+    const categoryMatch = block.match(/Category: (.+)/);
+    if (nameMatch && barcodeMatch) {
+      results.push({
+        storeSid,
+        productName: nameMatch[1].trim(),
+        barcode: barcodeMatch[1].trim(),
+        price: priceMatch ? priceMatch[1].trim() : '0',
+        quantity: qtyMatch ? parseInt(qtyMatch[1]) : 0,
+        inStock: statusMatch ? statusMatch[1].trim().toLowerCase().includes('in stock') : false,
+        category: categoryMatch ? categoryMatch[1].trim() : '',
+      });
+    }
+  }
+  return results;
+}
+
+// ── Strip internal tags from LLM response ────────────────────────────────────
+function stripInternalTags(text: string): string {
+  return text.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 // ── Search result fallback helpers ──────────────────────────────────────────
@@ -181,6 +228,7 @@ export async function processChat(
   const toolsUsed: string[] = [];
   const allToolCalls: ToolCallRecord[] = [];
   let latestSearchResults: MedicineSearchResult[] = [];
+  let latestStoreResults: StoreProductResult[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -191,7 +239,15 @@ export async function processChat(
   // Resolve role-scoped configuration
   const userRole = role || 'customer';
   const allowedTools = getAllowedToolsForRole(userRole);
-  const systemInstruction = getSystemPromptForRole(userRole);
+
+  // Inject live bot config into customer system prompt so contact info is always fresh
+  let systemInstruction: string;
+  if (userRole === 'customer') {
+    const botConfig = await botConfigService.getConfig();
+    systemInstruction = buildCustomerSystemPrompt(botConfig);
+  } else {
+    systemInstruction = getSystemPromptForRole(userRole);
+  }
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
@@ -260,6 +316,13 @@ export async function processChat(
         if (parsed.length > 0) latestSearchResults = parsed;
       }
 
+      // Capture structured store product results
+      if (call.name === 'search_store_products') {
+        const sid = String((call.args as Record<string, unknown>).store_sid || '');
+        const parsed = parseStoreResults(toolResult, sid);
+        if (parsed.length > 0) latestStoreResults = parsed;
+      }
+
       // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
       if (call.name === 'create_cart' && toolResult.includes('successfully')) {
         // Persist the cart UID from the result so it's reused next time
@@ -291,10 +354,11 @@ export async function processChat(
   }
 
   const text = result.text();
-  const finalResponse =
+  const finalResponse = stripInternalTags(
     text && text.trim()
       ? text
-      : 'I apologize, but I could not generate a response. Please try rephrasing your question.';
+      : 'I apologize, but I could not generate a response. Please try rephrasing your question.',
+  );
 
   // Save assistant response with tool call metadata
   conversationStore.addMessage(session.id, {
@@ -335,6 +399,7 @@ export async function processChat(
     conversationId: session.id,
     toolsUsed: [...new Set(toolsUsed)],
     searchResults: latestSearchResults.length > 0 ? latestSearchResults : undefined,
+    storeResults: latestStoreResults.length > 0 ? latestStoreResults : undefined,
     sessionState: {
       turnCount: session.turnCount,
       cartItemCount: session.cart.length,
@@ -362,6 +427,7 @@ export async function* processChatStream(
   const toolsUsed: string[] = [];
   const allToolCalls: ToolCallRecord[] = [];
   let latestSearchResults: MedicineSearchResult[] = [];
+  let latestStoreResults: StoreProductResult[] = [];
 
   // Resolve or create conversation session
   let session = conversationId ? conversationStore.get(conversationId) : undefined;
@@ -372,7 +438,15 @@ export async function* processChatStream(
   // Resolve role-scoped configuration
   const userRole = role || 'customer';
   const allowedTools = getAllowedToolsForRole(userRole);
-  const systemInstruction = getSystemPromptForRole(userRole);
+
+  // Inject live bot config into customer system prompt so contact info is always fresh
+  let systemInstruction: string;
+  if (userRole === 'customer') {
+    const botConfig = await botConfigService.getConfig();
+    systemInstruction = buildCustomerSystemPrompt(botConfig);
+  } else {
+    systemInstruction = getSystemPromptForRole(userRole);
+  }
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
@@ -463,6 +537,13 @@ export async function* processChatStream(
           if (parsed.length > 0) latestSearchResults = parsed;
         }
 
+        // Capture structured store product results for the done event
+        if (call.name === 'search_store_products') {
+          const sid = String((call.args as Record<string, unknown>).store_sid || '');
+          const parsed = parseStoreResults(toolResult, sid);
+          if (parsed.length > 0) latestStoreResults = parsed;
+        }
+
         // Sync session cart when CREATE_CART succeeds (full replace — CREATE_CART is the source of truth)
         if (call.name === 'create_cart' && toolResult.includes('successfully')) {
           // Persist the cart UID from the result so it's reused next time
@@ -506,6 +587,8 @@ export async function* processChatStream(
       }
     }
 
+    fullText = stripInternalTags(fullText);
+
     // Save to history with tool metadata
     if (fullText.trim()) {
       conversationStore.addMessage(session.id, {
@@ -544,6 +627,7 @@ export async function* processChatStream(
         conversationId: session.id,
         toolsUsed: [...new Set(toolsUsed)],
         searchResults: latestSearchResults.length > 0 ? latestSearchResults : undefined,
+        storeResults: latestStoreResults.length > 0 ? latestStoreResults : undefined,
         sessionState: {
           turnCount: session.turnCount,
           cartItemCount: session.cart.length,

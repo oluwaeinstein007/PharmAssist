@@ -9,6 +9,7 @@ import { CreateCartService, type CartItem } from '../../services/createCartServi
 import { LogPurchaseService } from '../../services/logPurchaseService.js';
 import { FindAlternativesService } from '../../services/logPurchaseService.js';
 import { NotifyAdminService } from '../../services/notifyAdminService.js';
+import { StoreService } from '../../services/storeService.js';
 
 // ── Shared service singletons ───────────────────────────────────────────────
 
@@ -314,6 +315,106 @@ const notifyAdminTool: ToolDefinition = {
   },
 };
 
+const getStoreLocationsTool: ToolDefinition = {
+  name: 'get_store_locations',
+  geminiDeclaration: {
+    name: 'get_store_locations',
+    description:
+      'Get MedPlus store locations. Use this when a customer asks where stores are, or when they ask if a product is available in a specific area/store. After getting locations, if the customer asked about a product, IMMEDIATELY call search_store_products for the matching store(s) — do NOT ask the customer to choose.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        location: {
+          type: SchemaType.STRING,
+          description: 'Optional: any location term to filter by — state, LGA, area, or store name (e.g., "Yaba", "Lagos", "Abuja", "Victoria Island"). Leave empty to get all stores.',
+        } as Schema,
+      },
+      required: [],
+    } as Schema,
+  } as FunctionDeclaration,
+  execute: async (args) => {
+    const service = new StoreService();
+    const locations = await service.getStoreLocations();
+
+    if (locations.length === 0) {
+      return 'No store locations found.';
+    }
+
+    const filter = args.location ? String(args.location).toLowerCase() : '';
+    const filtered = filter
+      ? locations.filter((s) =>
+          (s.state?.toLowerCase() ?? '').includes(filter) ||
+          (s.local_govt?.toLowerCase() ?? '').includes(filter) ||
+          (s.name?.toLowerCase() ?? '').includes(filter) ||
+          (s.store_address?.toLowerCase() ?? '').includes(filter),
+        )
+      : locations;
+
+    if (filtered.length === 0) {
+      return `No stores found matching "${args.location}". Available states: ${[...new Set(locations.map((s) => s.state))].join(', ')}`;
+    }
+
+    let response = `Found ${filtered.length} MedPlus store(s)${filter ? ` matching "${args.location}"` : ''}:\n\n`;
+    filtered.forEach((store, index) => {
+      response += `${index + 1}. **${store.name}**\n   Address: ${store.store_address}\n   LGA: ${store.local_govt}, ${store.state}\n   [internal:sid=${store.sid}]\n`;
+    });
+    return response;
+  },
+};
+
+const searchStoreProductsTool: ToolDefinition = {
+  name: 'search_store_products',
+  geminiDeclaration: {
+    name: 'search_store_products',
+    description:
+      'Search for products available at a specific MedPlus store by its store ID (sid). Use this when a customer wants to check if a specific product is available at a particular store location.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        store_sid: {
+          type: SchemaType.STRING,
+          description: 'The store ID (sid) from get_store_locations results (from [internal:sid=...] tag)',
+        } as Schema,
+        search: {
+          type: SchemaType.STRING,
+          description: 'Optional: product name or keyword to search for within the store',
+        } as Schema,
+        page: {
+          type: SchemaType.NUMBER,
+          description: 'Optional: page number for paginated results (default 1)',
+        } as Schema,
+      },
+      required: ['store_sid'],
+    } as Schema,
+  } as FunctionDeclaration,
+  execute: async (args) => {
+    const service = new StoreService();
+    const sid = String(args.store_sid || '');
+    if (!sid) return 'store_sid is required.';
+
+    const result = await service.getProductsByStore(sid, {
+      search: args.search ? String(args.search) : undefined,
+      page: args.page ? Number(args.page) : undefined,
+    });
+
+    if (result.data.length === 0) {
+      return `No products found${args.search ? ` for "${args.search}"` : ''} at store ${sid}.`;
+    }
+
+    let response = `Found ${result.data.length} product(s) at store${args.search ? ` matching "${args.search}"` : ''}:\n\n`;
+    result.data.forEach((p, index) => {
+      const inStock = p.quantity > 0 ? 'In Stock' : 'Out of Stock';
+      response += `${index + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock} (${p.quantity} units)\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}] [internal:qty=${p.quantity}]\n`;
+    });
+
+    if (result.next_page_url) {
+      response += `\n_More results available — ask for page ${(args.page as number || 1) + 1} to see more._`;
+    }
+
+    return response;
+  },
+};
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 export const toolRegistry: ToolDefinition[] = [
@@ -324,6 +425,8 @@ export const toolRegistry: ToolDefinition[] = [
   createCartTool,
   logPurchaseTool,
   notifyAdminTool,
+  getStoreLocationsTool,
+  searchStoreProductsTool,
 ];
 
 export const toolMap = new Map<string, ToolDefinition>(

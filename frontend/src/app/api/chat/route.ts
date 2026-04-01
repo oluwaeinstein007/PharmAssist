@@ -8,6 +8,64 @@ import {
 
 const MCP_URL = process.env.MCP_URL || 'http://localhost:4000/mcp';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const PRODUCTS_API_BASE_URL = (process.env.UNIFIED_PRODUCTS_BASE_URL || '').replace(/\/$/, '');
+
+// ── Bot config (fetched live, falls back to hardcoded defaults) ─────────────
+
+interface BotConfig {
+  contact: {
+    support_whatsapp: string;
+    support_call: string;
+    support_email: string;
+    telehealth_whatsapp: string;
+    telehealth_call: string;
+    telehealth_email: string;
+  };
+  links: {
+    privacy_policy: string;
+    order_tracking: string;
+    pharmacists: string;
+  };
+}
+
+const FALLBACK_CONFIG: BotConfig = {
+  contact: {
+    support_whatsapp: '08054022662',
+    support_call: '08054022662',
+    support_email: 'customercare@medplusng.com',
+    telehealth_whatsapp: '08187122408',
+    telehealth_call: '08113590038',
+    telehealth_email: 'telehealth@medplusng.com',
+  },
+  links: {
+    privacy_policy: 'https://medplusnig.com/privacy-policy',
+    order_tracking: 'https://medplusnig.com/track-order',
+    pharmacists: 'https://medplusnig.com/telemedicine',
+  },
+};
+
+let _cachedConfig: BotConfig | null = null;
+let _cacheExpiresAt = 0;
+
+async function getBotConfig(): Promise<BotConfig> {
+  if (_cachedConfig && Date.now() < _cacheExpiresAt) return _cachedConfig;
+  if (!PRODUCTS_API_BASE_URL) return FALLBACK_CONFIG;
+  try {
+    const res = await fetch(`${PRODUCTS_API_BASE_URL}/bot-config`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json() as { success?: boolean; data?: BotConfig } | BotConfig;
+    const data = (json as { data?: BotConfig }).data ?? (json as BotConfig);
+    _cachedConfig = data;
+    _cacheExpiresAt = Date.now() + 5 * 60 * 1000;
+    return data;
+  } catch {
+    return FALLBACK_CONFIG;
+  }
+}
 
 interface MCPResponse {
   jsonrpc: string;
@@ -195,6 +253,42 @@ const pharmacyTools: FunctionDeclaration[] = [
       },
       required: ['items']
     } as Schema
+  } as FunctionDeclaration,
+  {
+    name: 'get_store_locations',
+    description: 'Get MedPlus store locations. Use this when a customer asks where stores are, or when checking product availability in a specific area. After getting locations, if the customer asked about a product, IMMEDIATELY call search_store_products — do NOT ask the customer to choose a store.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        location: {
+          type: SchemaType.STRING,
+          description: 'Optional: filter by state, LGA, area, or store name (e.g., "Yaba", "Lagos", "Ikeja"). Leave empty to get all stores.'
+        } as Schema
+      },
+      required: []
+    } as Schema
+  } as FunctionDeclaration,
+  {
+    name: 'search_store_products',
+    description: 'Search for products available at a specific MedPlus store by its store SID. Use this to check if a product is in stock at a particular branch.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        store_sid: {
+          type: SchemaType.STRING,
+          description: 'The store SID from get_store_locations results (from [internal:sid=...] tag)'
+        } as Schema,
+        search: {
+          type: SchemaType.STRING,
+          description: 'Optional: product name to search for within the store'
+        } as Schema,
+        page: {
+          type: SchemaType.NUMBER,
+          description: 'Optional: page number (default 1)'
+        } as Schema
+      },
+      required: ['store_sid']
+    } as Schema
   } as FunctionDeclaration
 ];
 
@@ -218,25 +312,102 @@ function mapArguments(toolName: string, args: Record<string, unknown>): Record<s
   }
 }
 
+async function callStoreApi(toolName: string, args: Record<string, unknown>): Promise<string> {
+  if (!PRODUCTS_API_BASE_URL) {
+    return 'Store locations service is temporarily unavailable. Please contact us: WhatsApp 08054022662 | Call 08054022662';
+  }
+
+  try {
+    if (toolName === 'get_store_locations') {
+      const res = await fetch(`${PRODUCTS_API_BASE_URL}/stores/locations`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json() as { success?: boolean; data: Array<{ sid: string | number; name: string; store_address: string; state: string; local_govt: string }> };
+      const locations = body.data ?? [];
+      if (locations.length === 0) return 'No store locations found.';
+
+      const filter = args.location ? String(args.location).toLowerCase() : '';
+      const filtered = filter
+        ? locations.filter((s) =>
+            (s.state?.toLowerCase() ?? '').includes(filter) ||
+            (s.local_govt?.toLowerCase() ?? '').includes(filter) ||
+            (s.name?.toLowerCase() ?? '').includes(filter) ||
+            (s.store_address?.toLowerCase() ?? '').includes(filter),
+          )
+        : locations;
+
+      if (filtered.length === 0) {
+        return `No stores found matching "${args.location}". Available states: ${[...new Set(locations.map((s: { state: string }) => s.state))].join(', ')}`;
+      }
+
+      let out = `Found ${filtered.length} MedPlus store(s)${filter ? ` matching "${args.location}"` : ''}:\n\n`;
+      filtered.forEach((store: { sid: string | number; name: string; store_address: string; state: string; local_govt: string }, i: number) => {
+        out += `${i + 1}. **${store.name}**\n   Address: ${store.store_address}\n   LGA: ${store.local_govt}, ${store.state}\n   [internal:sid=${store.sid}]\n`;
+      });
+      return out;
+    }
+
+    if (toolName === 'search_store_products') {
+      const sid = String(args.store_sid || '');
+      if (!sid) return 'store_sid is required.';
+      const params = new URLSearchParams();
+      if (args.search) params.set('search', String(args.search));
+      if (args.page) params.set('page', String(args.page));
+      const query = params.toString() ? `?${params.toString()}` : '';
+
+      const res = await fetch(`${PRODUCTS_API_BASE_URL}/products/stores/${encodeURIComponent(sid)}${query}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json() as { success?: boolean; data: { store_sid: string; data: Array<{ product_name: string; barcode: string; price: string; quantity: number; category_name: string }>; next_page_url: string | null } };
+      const products = body.data?.data ?? [];
+
+      if (products.length === 0) return `No products found${args.search ? ` for "${args.search}"` : ''} at store ${sid}.`;
+
+      let out = `Found ${products.length} product(s)${args.search ? ` matching "${args.search}"` : ''}:\n\n`;
+      products.forEach((p, i) => {
+        const inStock = p.quantity > 0 ? 'In Stock' : 'Out of Stock';
+        out += `${i + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock} (${p.quantity} units)\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}]\n`;
+      });
+      if (body.data?.next_page_url) {
+        out += `\n_More results available — ask for the next page._`;
+      }
+      return out;
+    }
+
+    return `Unknown store tool: ${toolName}`;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`[StoreAPI] ${toolName} failed:`, msg);
+    return `Store service error: ${msg}. Please contact support: WhatsApp 08054022662`;
+  }
+}
+
 async function processWithGemini(
-  message: string, 
-  mcpClient: MCPClient
+  message: string,
+  mcpClient: MCPClient,
+  config: BotConfig,
 ): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
+  const { contact, links } = config;
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  
+
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
     tools: [{ functionDeclarations: pharmacyTools }],
     systemInstruction: `You are PharmAssist, an AI pharmacy assistant for MedPlus customers. Help customers find and order medicines easily.
 
 CORE RESPONSIBILITIES:
-1. Search for medicines when users ask (use search_medicines)
-2. Display search results with barcode, price, and availability
+1. Search for medicines when users ask (use search_medicines) — but NOT for store/location queries
+2. Display search results with price and availability
 3. Create carts when users want to order (use create_cart)
+4. Find store locations when users ask about stores (use get_store_locations)
 
 FRONTEND WORKFLOW:
 - The frontend will automatically extract barcodes from your search results
@@ -248,36 +419,36 @@ FRONTEND WORKFLOW:
 EXPECTED RESPONSE FORMAT FOR SEARCH:
 When you find medicines, format them EXACTLY like this:
 1. **Medicine Name**
-   Barcode: 1234567890
    Price: ₦10.99
-   Available: 50 units
+   Status: In Stock
 
 === CONTACT INFO (use when escalating) ===
-Support WhatsApp: 08054022662
-Support Call: 08054022662
-Support Email: customercare@medplusng.com
-Telehealth WhatsApp: 08187122408
-Telehealth Call: 08113590038
-Pharmacist page: https://medplusnig.com/telemedicine
-Order tracking: https://medplusnig.com/track-order
-Policy: https://medplusnig.com/privacy-policy
+Support WhatsApp: ${contact.support_whatsapp}
+Support Call: ${contact.support_call}
+Support Email: ${contact.support_email}
+Telehealth WhatsApp: ${contact.telehealth_whatsapp}
+Telehealth Call: ${contact.telehealth_call}
+Telehealth Email: ${contact.telehealth_email}
+Pharmacist page: ${links.pharmacists}
+Order tracking: ${links.order_tracking}
+Policy: ${links.privacy_policy}
 
 === COMPLIANCE & SAFETY (HARD RULES) ===
 
 PRESCRIPTION MEDICATIONS (RC-01):
 - Antibiotics, controlled substances, or any prescription-only drug WITHOUT a prescription:
   Respond: "⚠️ PRESCRIPTION REQUIRED — This medication requires a valid prescription."
-  Add pharmacist contacts: Telehealth WhatsApp 08187122408 | Call 08113590038 | https://medplusnig.com/telemedicine
+  Add pharmacist contacts: Telehealth WhatsApp ${contact.telehealth_whatsapp} | Call ${contact.telehealth_call} | ${links.pharmacists}
   This rule applies even for misspelled drug names (amoxcillin, amoxycillin, etc.).
 
 PEDIATRIC DOSAGE (RC-02):
 - NEVER provide dosage for children. Say: "Please speak to a pharmacist for safe medicine use in children."
-  Offer: Telehealth WhatsApp 08187122408
+  Offer: Telehealth WhatsApp ${contact.telehealth_whatsapp}
 
 DRUG INTERACTIONS (RC-04):
 - For questions about mixing drugs or taking with alcohol: Give brief disclaimer only.
   "⚠️ Consult a pharmacist before combining medications. This is for general reference only, not medical advice."
-  Always add: Speak to a Pharmacist: WhatsApp 08187122408 | https://medplusnig.com/telemedicine
+  Always add: Speak to a Pharmacist: WhatsApp ${contact.telehealth_whatsapp} | ${links.pharmacists}
 
 PREGNANCY (RC-03):
 - If customer mentions pregnancy: Add "⚠️ Please consult a pharmacist or doctor before taking any medication during pregnancy."
@@ -290,12 +461,26 @@ MALARIA (PD-01, UC-01):
 - After results, suggest: ORS, Thermometer, Vitamin C as complementary items.
 
 === HUMAN ESCALATION ===
-- "Speak to a human / agent / real person": Offer Support WhatsApp 08054022662 | Call 08054022662 | Email customercare@medplusng.com
+- "Speak to a human / agent / real person": Offer Support WhatsApp ${contact.support_whatsapp} | Call ${contact.support_call} | Email ${contact.support_email}
 - Angry/frustrated: Empathize first, then offer human handoff.
 
-=== STOCK & LOCATION ===
-- Stock by location: "Please contact the store: WhatsApp 08054022662 | Call 08054022662"
-- Restock: "Contact our team for restock notifications: WhatsApp 08054022662"
+=== STORE LOCATIONS & STOCK ===
+
+FINDING STORES (SA-01):
+- When asked about store locations, call get_store_locations with the location= parameter set to the area mentioned (e.g., "Yaba", "Lagos", "Abuja").
+- NEVER show [internal:sid=...] tags to the customer.
+
+PRODUCT AVAILABILITY AT A SPECIFIC LOCATION (SA-02) — CRITICAL FLOW:
+- When asked if a product is available in a location (e.g., "What stores in Lagos stock amoxicillin?", "Do you have ibuprofen in Yaba?"), follow this EXACT flow WITHOUT asking the customer anything:
+  1. Call get_store_locations(location="<area>") to find matching stores
+  2. Extract the [internal:sid=...] value(s) from the results SILENTLY
+  3. Immediately call search_store_products(store_sid=<sid>, search="<product>") for the most relevant store(s)
+  4. Present the product results with store name, price, and stock status
+- Do NOT call search_medicines for store availability queries — always use get_store_locations + search_store_products.
+- Do NOT ask the customer which store — pick the most relevant one(s) automatically.
+
+RESTOCK (SA-03):
+- Respond: "Contact our team: WhatsApp ${contact.support_whatsapp} | Call ${contact.support_call}"
 
 === PRICING ===
 - Discounts/promos: No real-time data — escalate to agents.
@@ -304,21 +489,21 @@ MALARIA (PD-01, UC-01):
 
 === CHECKOUT & PAYMENT ===
 - How to pay: 1) Select medicines, 2) Add to cart, 3) Click Checkout, 4) Use cart link to pay (Card/Transfer/USSD).
-- No pay on delivery: "Pay online and pick up in-store: https://medplusnig.com/track-order"
-- Card failing: Escalate to Support WhatsApp 08054022662
-- Address change: "Contact support BEFORE dispatch: WhatsApp 08054022662"
-- Delivery time: "Contact delivery team: WhatsApp 08054022662"
+- No pay on delivery: "Pay online and pick up in-store: ${links.order_tracking}"
+- Card failing: Escalate to Support WhatsApp ${contact.support_whatsapp}
+- Address change: "Contact support BEFORE dispatch: WhatsApp ${contact.support_whatsapp}"
+- Delivery time: "Contact delivery team: WhatsApp ${contact.support_whatsapp}"
 
 === ORDER TRACKING ===
-- Track order: "Track here: https://medplusnig.com/track-order" + offer support contact.
+- Track order: "Track here: ${links.order_tracking}" + offer support contact.
 - Late/missing order: Escalate immediately to Support.
 - Cancel order: Ask for order number, escalate to Support.
-- Return policy: "Medications are NON-RETURNABLE once dispensed. Full policy: https://medplusnig.com/privacy-policy"
+- Return policy: "Medications are NON-RETURNABLE once dispensed. Full policy: ${links.privacy_policy}"
 
 === CHEAPEST OPTION ===
 - Highlight cheapest verified product separately: "Best Value: [name] at ₦[price]"
 
-Be friendly, clear, and let the frontend handle the UI interactions.`
+Be friendly, clear, and let the frontend handle the UI interactions.`,
   });
 
   const chat = model.startChat({});
@@ -337,7 +522,17 @@ Be friendly, clear, and let the frontend handle the UI interactions.`
     
     for (const call of functionCalls) {
       console.log(`[Gemini] Function call: ${call.name}`, call.args);
-      
+
+      // ── Store tools: call external API directly (no MCP equivalent) ────────
+      if (call.name === 'get_store_locations' || call.name === 'search_store_products') {
+        const storeResult = await callStoreApi(call.name, call.args as Record<string, unknown>);
+        console.log(`[StoreAPI] ${call.name} result:`, storeResult.substring(0, 200));
+        functionResponses.push({
+          functionResponse: { name: call.name, response: { result: storeResult } }
+        });
+        continue;
+      }
+
       const mcpToolName = toolMapping[call.name];
       if (!mcpToolName) {
         functionResponses.push({
@@ -348,13 +543,13 @@ Be friendly, clear, and let the frontend handle the UI interactions.`
         });
         continue;
       }
-      
+
       const mappedArgs = mapArguments(call.name, call.args as Record<string, unknown>);
       console.log(`[MCP] Calling ${mcpToolName} with:`, mappedArgs);
-      
+
       const toolResult = await mcpClient.callTool(mcpToolName, mappedArgs);
       console.log(`[MCP] Result from ${mcpToolName}:`, toolResult.substring(0, 200));
-      
+
       functionResponses.push({
         functionResponse: {
           name: call.name,
@@ -368,11 +563,11 @@ Be friendly, clear, and let the frontend handle the UI interactions.`
   }
   
   const text = result.text();
-  if (!text || text.trim() === '') {
-    return 'I apologize, but I could not generate a response. Please try rephrasing your question.';
-  }
-  
-  return text;
+  const finalText = text && text.trim()
+    ? text.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim()
+    : 'I apologize, but I could not generate a response. Please try rephrasing your question.';
+
+  return finalText;
 }
 
 export async function POST(request: NextRequest) {
@@ -454,8 +649,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fetch live bot config (cached, with fallback)
+    const botConfig = await getBotConfig();
+
     // Process with Gemini for general chat flow
-    const response = await processWithGemini(message!, mcpClient);
+    const response = await processWithGemini(message!, mcpClient, botConfig);
 
     console.log(`[Chat] Processed in ${Date.now() - startTime}ms`);
 

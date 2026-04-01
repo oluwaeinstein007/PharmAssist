@@ -904,6 +904,48 @@
             },
             "description": "MALARIA UPSELL TEST (UC-01): Bot must ask about Quinine/Sulfa allergy and whether the patient was tested, then show results with complementary product suggestions (ORS, Thermometer, Vitamin C)."
           }
+        },
+        {
+          "name": "SA-01: Find MedPlus store locations (bot tool test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Where are your stores in Lagos?\",\n  \"conversationId\": \"{{conversation_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "STORE LOCATION TOOL TEST (SA-01): Bot must call `get_store_locations` tool, filter by Lagos, and return a formatted list of store names and addresses. Must NOT just show support contacts without calling the tool."
+          }
+        },
+        {
+          "name": "SA-02: Check product availability at specific store (bot tool chain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Role", "value": "customer" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Is paracetamol available at the Yaba store?\",\n  \"conversationId\": \"{{conversation_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "STORE PRODUCT TOOL CHAIN TEST (SA-02): Bot must call `get_store_locations` to find the store SID, then call `search_store_products` with that SID and query 'paracetamol'. Must return product availability with price and stock status for the specific store."
+          }
         }
       ]
     }
