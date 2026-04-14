@@ -115,9 +115,9 @@ function extractProductsFromContent(content: string): ProductOption[] {
       nameMatch = block.match(/\d+\.\s*([^\n]+)/);
     }
 
-    const barcodeMatch = block.match(/Barcode:\s*([^\n]+)/);
+    const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
     const priceMatch = block.match(/Price:\s*[₦N]?([\d.]+)/);
-    const quantityMatch = block.match(/Available:\s*(\d+)\s*units/);
+    const quantityMatch = block.match(/\[internal:qty=(\d+)\]/);
 
     if (nameMatch && barcodeMatch) {
       products.push({

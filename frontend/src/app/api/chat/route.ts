@@ -370,7 +370,7 @@ async function callStoreApi(toolName: string, args: Record<string, unknown>): Pr
       let out = `Found ${products.length} product(s)${args.search ? ` matching "${args.search}"` : ''}:\n\n`;
       products.forEach((p, i) => {
         const inStock = p.quantity > 0 ? 'In Stock' : 'Out of Stock';
-        out += `${i + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock} (${p.quantity} units)\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}]\n`;
+        out += `${i + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock}\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}]\n`;
       });
       if (body.data?.next_page_url) {
         out += `\n_More results available — ask for the next page._`;
@@ -399,7 +399,7 @@ async function processWithGemini(
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash',
     tools: [{ functionDeclarations: pharmacyTools }],
     systemInstruction: `You are PharmAssist, an AI pharmacy assistant for MedPlus customers. Help customers find and order medicines easily.
 
@@ -564,7 +564,7 @@ Be friendly, clear, and let the frontend handle the UI interactions.`,
   
   const text = result.text();
   const finalText = text && text.trim()
-    ? text.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim()
+    ? text.trim()
     : 'I apologize, but I could not generate a response. Please try rephrasing your question.';
 
   return finalText;

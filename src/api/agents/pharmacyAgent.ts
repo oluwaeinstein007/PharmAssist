@@ -6,7 +6,7 @@ import { getSystemPromptForRole, getAllowedToolsForRole, buildCustomerSystemProm
 import { botConfigService } from '../../services/botConfigService.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash';
 const MAX_TOOL_ITERATIONS = 5;
 
 // System prompt is now role-dependent — see src/api/rbac/roles.ts
@@ -253,7 +253,9 @@ export async function processChat(
     model: GEMINI_MODEL,
     tools: [{ functionDeclarations: getGeminiDeclarations(allowedTools) }],
     systemInstruction,
-  });
+  },
+  { apiVersion: 'v1beta' }
+);
 
   // Get context-windowed history (not the full raw history)
   const { contextPreamble, recentHistory } = conversationStore.getContextWindow(session.id);
@@ -452,7 +454,9 @@ export async function* processChatStream(
     model: GEMINI_MODEL,
     tools: [{ functionDeclarations: getGeminiDeclarations(allowedTools) }],
     systemInstruction,
-  });
+  },
+  { apiVersion: 'v1beta' }
+);
 
   const { contextPreamble, recentHistory } = conversationStore.getContextWindow(session.id);
 

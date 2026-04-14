@@ -173,9 +173,9 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
         nameMatch = block.match(/\d+\.\s*([^\n]+)/);
       }
       
-      const barcodeMatch = block.match(/Barcode:\s*([^\n]+)/);
+      const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
       const priceMatch = block.match(/Price:\s*[₦N]?([\d.]+)/);
-      const quantityMatch = block.match(/Available:\s*(\d+)\s*units/);
+      const quantityMatch = block.match(/\[internal:qty=(\d+)\]/);
 
       if (nameMatch && barcodeMatch) {
         const productName = nameMatch[1].trim().replace(/\*\*/g, '');
@@ -223,7 +223,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       );
     } else {
       // No quantity mentioned, ask for it
-      addMessage(`✅ Selected: **${product.name}** @ ₦${product.price}\n\n**${product.available} units available**`, 'system');
+      addMessage(`✅ Selected: **${product.name}** @ ₦${product.price}\n\n**${product.available > 0 ? 'In Stock' : 'Out of Stock'}**`, 'system');
       
       const messageId = generateUUID();
       setAwaitingConfirmation({
@@ -364,11 +364,12 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
 
         const data = await response.json();
         const responseText = data.response || 'No response received';
+        const displayText = responseText.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
 
         if (data.error && !data.response) {
           updateMessage(loadingId, `❌ Error: ${data.error}`, false);
         } else {
-          updateMessage(loadingId, responseText, false);
+          updateMessage(loadingId, displayText, false);
 
           const products = extractProducts(responseText);
           // If a single product across the aggregated results had a quantity mention in the original message, auto-select it
@@ -406,11 +407,12 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
 
       const data = await response.json();
       const responseText = data.response || 'No response received';
-      
+      const displayText = responseText.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
+
       if (data.error && !data.response) {
         updateMessage(loadingId, `❌ Error: ${data.error}`, false);
       } else {
-        updateMessage(loadingId, responseText, false);
+        updateMessage(loadingId, displayText, false);
 
         // Auto-select if user mentioned quantity and there's only one product
         const products = extractProducts(responseText);
@@ -649,7 +651,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
                         className="flex-1 min-w-[200px] px-3 py-2 bg-white hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-600 text-left rounded-lg text-xs transition-all shadow-md hover:shadow-lg disabled:opacity-50 font-medium text-gray-800 hover:text-blue-700"
                       >
                         <div className="font-bold text-blue-600 text-sm">{product.name}</div>
-                        <div className="text-xs text-gray-600 mt-0.5">₦{product.price.toLocaleString()} • {product.available} units</div>
+                        <div className="text-xs text-gray-600 mt-0.5">₦{product.price.toLocaleString()} • {product.available > 0 ? 'In Stock' : 'Out of Stock'}</div>
                       </button>
                     ))}
                   </div>

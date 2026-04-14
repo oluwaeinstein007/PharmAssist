@@ -404,7 +404,7 @@ const searchStoreProductsTool: ToolDefinition = {
     let response = `Found ${result.data.length} product(s) at store${args.search ? ` matching "${args.search}"` : ''}:\n\n`;
     result.data.forEach((p, index) => {
       const inStock = p.quantity > 0 ? 'In Stock' : 'Out of Stock';
-      response += `${index + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock} (${p.quantity} units)\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}] [internal:qty=${p.quantity}]\n`;
+      response += `${index + 1}. **${p.product_name}**\n   Price: ₦${p.price}\n   Status: ${inStock}\n   Category: ${p.category_name}\n   [internal:barcode=${p.barcode}] [internal:qty=${p.quantity}]\n`;
     });
 
     if (result.next_page_url) {
