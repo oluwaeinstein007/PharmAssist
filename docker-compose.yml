@@ -20,6 +20,7 @@ services:
       - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
       - CART_BASE_URL=${CART_BASE_URL}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_CHAT_MODEL=${GEMINI_CHAT_MODEL:-gemini-2.5-flash}
       - GEMINI_API_KEY=${GOOGLE_API_KEY}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
       - BEARER_TOKEN=${BEARER_TOKEN}
@@ -49,6 +50,7 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://mcp-backend:4000}
       # Frontend environment variables
       - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GEMINI_CHAT_MODEL=${GEMINI_CHAT_MODEL:-gemini-2.5-flash}
       - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-001}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
       - NEXT_PUBLIC_MCP_URL=${NEXT_PUBLIC_MCP_URL:-http://mcp-backend:4000/mcp}
@@ -87,6 +89,7 @@ services:
       - UNIFIED_PRODUCTS_BASE_URL=${UNIFIED_PRODUCTS_BASE_URL}
       - CART_BASE_URL=${CART_BASE_URL}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_CHAT_MODEL=${GEMINI_CHAT_MODEL:-gemini-2.5-flash}
       - GEMINI_API_KEY=${GOOGLE_API_KEY}
       - BEARER_TOKEN=${BEARER_TOKEN}
     restart: unless-stopped

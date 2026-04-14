@@ -399,7 +399,7 @@ async function processWithGemini(
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash',
     tools: [{ functionDeclarations: pharmacyTools }],
     systemInstruction: `You are PharmAssist, an AI pharmacy assistant for MedPlus customers. Help customers find and order medicines easily.
 
