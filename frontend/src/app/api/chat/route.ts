@@ -504,7 +504,7 @@ RESTOCK (SA-03):
 - Highlight cheapest verified product separately: "Best Value: [name] at ₦[price]"
 
 Be friendly, clear, and let the frontend handle the UI interactions.`,
-  });
+  }, { apiVersion: 'v1beta' });
 
   const chat = model.startChat({});
   
