@@ -504,17 +504,23 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       .split('\n')
       .flatMap((line, i) => {
         // Strip internal metadata tags (barcodes, quantities, sids) — frontend-only data
-        line = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\[internal:[^\]]+\]/g, '').trim();
+        line = line.replace(/\[internal:[^\]]+\]/g, '').trim();
         if (!line) return [];
-        line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+        // Headings use React text children — render raw text, no HTML escaping needed
         if (line.startsWith('## ')) {
           return [<h3 key={i} className="text-lg font-semibold mt-2 mb-1">{line.substring(3)}</h3>];
         }
         if (line.startsWith('# ')) {
           return [<h2 key={i} className="text-xl font-bold mt-2 mb-1">{line.substring(2)}</h2>];
         }
+
+        // For dangerouslySetInnerHTML: escape raw LLM text first, then apply only our controlled tags
+        const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const formatted = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
         if (line.startsWith('- ')) {
-          return [<li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: line.substring(2) }} />];
+          return [<li key={i} className="ml-4" dangerouslySetInnerHTML={{ __html: formatted.substring(2) }} />];
         }
 
         // Render escalation buttons for lines with contact patterns
@@ -522,7 +528,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
           const buttons = renderEscalationButtons(line, i);
           if (buttons) {
             return [
-              <p key={i} className="my-1 text-sm text-gray-700" dangerouslySetInnerHTML={{ __html: line }} />,
+              <p key={i} className="my-1 text-sm text-gray-700" dangerouslySetInnerHTML={{ __html: formatted }} />,
               buttons,
             ];
           }
@@ -566,7 +572,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
           ];
         }
 
-        return [<p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: line }} />];
+        return [<p key={i} className="my-1" dangerouslySetInnerHTML={{ __html: formatted }} />];
       });
   };
 
