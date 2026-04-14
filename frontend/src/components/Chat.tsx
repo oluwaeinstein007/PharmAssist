@@ -174,7 +174,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       }
       
       const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
-      const priceMatch = block.match(/Price:\s*[₦N]?([\d,]+(?:\.\d+)?)/);
+      const priceMatch = block.match(/Price:\s*[₦N]?\s*([\d,]+(?:\.\d+)?)/);
       const quantityMatch = block.match(/\[internal:qty=(\d+)\]/);
       const statusMatch = block.match(/Status:\s*(In Stock|Out of Stock)/i);
 
@@ -504,7 +504,7 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       .split('\n')
       .flatMap((line, i) => {
         // Strip internal metadata tags (barcodes, quantities, sids) — frontend-only data
-        line = line.replace(/\[internal:[^\]]+\]/g, '').trim();
+        line = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\[internal:[^\]]+\]/g, '').trim();
         if (!line) return [];
         line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         if (line.startsWith('## ')) {
