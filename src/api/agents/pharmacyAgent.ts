@@ -97,7 +97,7 @@ function parseStoreResults(toolResult: string, storeSid: string): StoreProductRe
     const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
     const priceMatch = block.match(/Price: ₦([\d.,]+)/);
     const statusMatch = block.match(/Status: ([\w ]+)/);
-    const qtyMatch = block.match(/\((\d+) units\)/);
+    const qtyMatch = block.match(/\[internal:qty=(\d+)\]/);
     const categoryMatch = block.match(/Category: (.+)/);
     if (nameMatch && barcodeMatch) {
       results.push({
