@@ -174,18 +174,27 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
       }
       
       const barcodeMatch = block.match(/\[internal:barcode=([^\]]+)\]/);
-      const priceMatch = block.match(/Price:\s*[₦N]?([\d.]+)/);
+      const priceMatch = block.match(/Price:\s*[₦N]?([\d,]+(?:\.\d+)?)/);
       const quantityMatch = block.match(/\[internal:qty=(\d+)\]/);
+      const statusMatch = block.match(/Status:\s*(In Stock|Out of Stock)/i);
 
       if (nameMatch && barcodeMatch) {
         const productName = nameMatch[1].trim().replace(/\*\*/g, '');
         const barcode = barcodeMatch[1].trim();
-        
+
+        // Prefer explicit qty tag; fall back to Status text (In Stock → 999, Out of Stock → 0)
+        let available = 0;
+        if (quantityMatch) {
+          available = parseInt(quantityMatch[1]);
+        } else if (statusMatch) {
+          available = statusMatch[1].toLowerCase() === 'in stock' ? 999 : 0;
+        }
+
         products.push({
           barcode: barcode,
           name: productName,
-          price: parseFloat(priceMatch?.[1] || '0'),
-          available: parseInt(quantityMatch?.[1] || '0'),
+          price: parseFloat((priceMatch?.[1] || '0').replace(/,/g, '')),
+          available,
         });
       }
     }
@@ -364,12 +373,11 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
 
         const data = await response.json();
         const responseText = data.response || 'No response received';
-        const displayText = responseText.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
 
         if (data.error && !data.response) {
           updateMessage(loadingId, `❌ Error: ${data.error}`, false);
         } else {
-          updateMessage(loadingId, displayText, false);
+          updateMessage(loadingId, responseText, false);
 
           const products = extractProducts(responseText);
           // If a single product across the aggregated results had a quantity mention in the original message, auto-select it
@@ -407,12 +415,11 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
 
       const data = await response.json();
       const responseText = data.response || 'No response received';
-      const displayText = responseText.replace(/\[internal:[^\]]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
 
       if (data.error && !data.response) {
         updateMessage(loadingId, `❌ Error: ${data.error}`, false);
       } else {
-        updateMessage(loadingId, displayText, false);
+        updateMessage(loadingId, responseText, false);
 
         // Auto-select if user mentioned quantity and there's only one product
         const products = extractProducts(responseText);
@@ -496,6 +503,9 @@ No barcodes, no complicated steps. Just simple medicine ordering! 🚀`,
     return content
       .split('\n')
       .flatMap((line, i) => {
+        // Strip internal metadata tags (barcodes, quantities, sids) — frontend-only data
+        line = line.replace(/\[internal:[^\]]+\]/g, '').trim();
+        if (!line) return [];
         line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         if (line.startsWith('## ')) {
           return [<h3 key={i} className="text-lg font-semibold mt-2 mb-1">{line.substring(3)}</h3>];
