@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+module.exports = {
   /* config options here */
-  reactCompiler: true,
+  experimental: {
+    reactCompiler: true,
+  },
 };
-
-export default nextConfig;
