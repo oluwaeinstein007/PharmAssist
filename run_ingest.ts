@@ -47,7 +47,7 @@ async function main() {
     // Initialize the service
     await ingestorService.initialize();
     
-    // Ingest all products without limit (0 = unlimited)
+    // Ingest all products without limit (0 = unlimited) ie (ingest everything in the API, in batches of 100)
     const result = await ingestorService.ingestAllProducts(0, 100);
     
     // Print results
