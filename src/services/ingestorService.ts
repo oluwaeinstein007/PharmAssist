@@ -24,9 +24,11 @@ async function retryBatch<T>(fn: () => Promise<T>, maxRetries: number, batchNum:
       return await fn();
     } catch (err) {
       lastError = err;
-      const delay = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s, 8s, 16s
-      console.warn(`  Batch ${batchNum} attempt ${attempt}/${maxRetries} failed — retrying in ${delay / 1000}s...`);
-      await new Promise(res => setTimeout(res, delay));
+      if (attempt < maxRetries) {
+        const delay = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s, 8s
+        console.warn(`  Batch ${batchNum} attempt ${attempt}/${maxRetries} failed — retrying in ${delay / 1000}s...`);
+        await new Promise(res => setTimeout(res, delay));
+      }
     }
   }
   throw lastError;
@@ -105,35 +107,33 @@ export class IngestorService {
         if (validBatch.length === 0) continue;
 
         try {
-          await retryBatch(async () => {
-            // Generate all embeddings for this batch in one API call
-            const texts = validBatch.map(p => this.productsService.formatProductForEmbedding(p));
-            const embeddings = await this.embeddingService.generateBatchEmbeddings(texts);
+          // Generate embeddings once — this is expensive, don't repeat on upsert retry
+          const texts = validBatch.map(p => this.productsService.formatProductForEmbedding(p));
+          const embeddings = await this.embeddingService.generateBatchEmbeddings(texts);
 
-            // Build Qdrant points — barcode is the dedup key
-            const points = validBatch.map((product, i) => {
-              const price = typeof product.price === 'string' ? parseFloat(product.price) : (product.price || 0);
-              const quantity = typeof product.quantity === 'string' ? parseInt(product.quantity, 10) : (product.quantity || 0);
-              return {
+          // Build Qdrant points — barcode is the dedup key
+          const points = validBatch.map((product, i) => {
+            const price = typeof product.price === 'string' ? parseFloat(product.price) : (product.price || 0);
+            const quantity = typeof product.quantity === 'string' ? parseInt(product.quantity, 10) : (product.quantity || 0);
+            return {
+              barcode: String(product.barcode),
+              embedding: embeddings[i],
+              payload: {
+                product_name: String(product.product_name || ''),
                 barcode: String(product.barcode),
-                embedding: embeddings[i],
-                payload: {
-                  product_name: String(product.product_name || ''),
-                  barcode: String(product.barcode),
-                  price: isNaN(price) ? 0 : price,
-                  quantity: isNaN(quantity) ? 0 : quantity,
-                  category_name: String(product.category_name || ''),
-                  category_slug: String(product.category_slug || ''),
-                  category_id: parseInt(String(product.category_id), 10) || 0,
-                  price_updated_at: product.price_updated_at || ingestedAt,
-                  ingested_at: ingestedAt,
-                },
-              };
-            });
+                price: isNaN(price) ? 0 : price,
+                quantity: isNaN(quantity) ? 0 : quantity,
+                category_name: String(product.category_name || ''),
+                category_slug: String(product.category_slug || ''),
+                category_id: parseInt(String(product.category_id), 10) || 0,
+                price_updated_at: product.price_updated_at || ingestedAt,
+                ingested_at: ingestedAt,
+              },
+            };
+          });
 
-            // Upsert the entire batch to Qdrant in one request
-            await this.qdrantService.addChunksBatch(points);
-          }, 5, batchNum);
+          // Retry only the Qdrant upsert
+          await retryBatch(() => this.qdrantService.addChunksBatch(points), 5, batchNum);
 
           for (const product of validBatch) {
             results.push({ id: String(product.barcode), productName: product.product_name, success: true, message: `Ingested: ${product.product_name}` });
