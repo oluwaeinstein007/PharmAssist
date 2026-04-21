@@ -20,7 +20,10 @@ function loadEnv() {
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       const [key, ...valueParts] = trimmed.split('=');
-      const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+      const raw = valueParts.join('=').trim();
+      // Extract only the quoted portion (strips inline comments like # ...)
+      const quotedMatch = raw.match(/^(["'])(.*)\1/);
+      const value = quotedMatch ? quotedMatch[2] : raw.split(/\s+#/)[0].trim();
 
       if (key && !process.env[key]) {
         process.env[key] = value;
@@ -45,7 +48,7 @@ async function main() {
     await ingestorService.initialize();
     
     // Ingest all products without limit (0 = unlimited)
-    const result = await ingestorService.ingestAllProducts(100, 50);
+    const result = await ingestorService.ingestAllProducts(0, 100);
     
     // Print results
     console.log('\n' + '='.repeat(60));
