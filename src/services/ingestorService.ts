@@ -142,7 +142,7 @@ export class IngestorService {
           console.log(`  Batch ${batchNum}/${totalBatches} done — ${validBatch.length} upserted`);
         } catch (batchError) {
           const message = batchError instanceof Error ? batchError.message : 'Unknown error';
-          console.error(`  Batch ${batchNum} failed after 5 retries: ${message}`);
+          console.error(`  Batch ${batchNum} failed after all retries: ${message}`);
           for (const product of validBatch) {
             results.push({ id: String(product.barcode), productName: product.product_name, success: false, message });
             failureCount++;
