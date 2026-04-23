@@ -25,7 +25,7 @@ async function retryBatch<T>(fn: () => Promise<T>, maxRetries: number, batchNum:
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {
-        const delay = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s, 8s
+        const delay = 1000 * Math.pow(2, attempt - 1); // exponential backoff
         console.warn(`  Batch ${batchNum} attempt ${attempt}/${maxRetries} failed — retrying in ${delay / 1000}s...`);
         await new Promise(res => setTimeout(res, delay));
       }
@@ -107,9 +107,8 @@ export class IngestorService {
         if (validBatch.length === 0) continue;
 
         try {
-          // Generate embeddings once — this is expensive, don't repeat on upsert retry
           const texts = validBatch.map(p => this.productsService.formatProductForEmbedding(p));
-          const embeddings = await this.embeddingService.generateBatchEmbeddings(texts);
+          const embeddings = await retryBatch(() => this.embeddingService.generateBatchEmbeddings(texts), 3, batchNum);
 
           // Build Qdrant points — barcode is the dedup key
           const points = validBatch.map((product, i) => {
